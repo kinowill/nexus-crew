@@ -1,0 +1,28 @@
+# ── Secrets — NE JAMAIS COMMITTER ─────────────────────────────
+.env
+*.key
+*.secret
+secrets.json
+
+# ── Contexte personnel (données de projet locales) ─────────────
+.nexus/
+context_store/
+
+# ── Python ─────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+
+# ── Scripts utilitaires ponctuels (chemins locaux) ─────────────
+scripts/append_claude_md.py
+
+# ── Windows ────────────────────────────────────────────────────
+Thumbs.db
+desktop.ini
+
+# ── Logs et caches ─────────────────────────────────────────────
+*.log
+*.jsonl
