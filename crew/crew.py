@@ -283,19 +283,52 @@ def list_files_tool(directory: str = ".") -> str:
 
 @tool("grep")
 def grep_tool(pattern: str, glob: str = "*") -> str:
-    """Cherche un pattern regex dans les fichiers du projet. glob optionnel (ex: *.py)."""
+    """Cherche un pattern regex dans les fichiers du projet. glob optionnel (ex: *.py).
+    Utilise le binaire grep si dispo, sinon fallback Python pur (re + fnmatch)."""
+    import shutil as _sh
+    # Chemin rapide : grep natif
+    if _sh.which("grep"):
+        try:
+            cmd = ["grep", "-rn", "-I", "--include", glob]
+            for skip in SKIP_DIRS:
+                cmd.extend(["--exclude-dir", skip])
+            cmd.extend([pattern, "."])
+            result = subprocess.run(
+                cmd, cwd=str(_project()), capture_output=True, text=True, timeout=30
+            )
+            out = result.stdout[:8000]
+            return out or f"(aucun match pour '{pattern}')"
+        except Exception as e:
+            return f"Erreur grep natif : {e}"
+
+    # Fallback Python pur
+    import re, fnmatch
     try:
-        cmd = ["grep", "-rn", "-I", "--include", glob]
-        for skip in SKIP_DIRS:
-            cmd.extend(["--exclude-dir", skip])
-        cmd.extend([pattern, "."])
-        result = subprocess.run(
-            cmd, cwd=str(_project()), capture_output=True, text=True, timeout=30
-        )
-        out = result.stdout[:8000]
-        return out or f"(aucun match pour '{pattern}')"
-    except Exception as e:
-        return f"Erreur grep : {e}"
+        rx = re.compile(pattern)
+    except re.error as e:
+        return f"Regex invalide : {e}"
+    hits = []
+    total_chars = 0
+    for root, dirs, files in os.walk(_project()):
+        dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
+        for fname in files:
+            if not fnmatch.fnmatch(fname, glob):
+                continue
+            fpath = Path(root) / fname
+            try:
+                with open(fpath, "r", encoding="utf-8", errors="ignore") as f:
+                    for lineno, line in enumerate(f, 1):
+                        if rx.search(line):
+                            rel = fpath.relative_to(_project())
+                            entry = f"{rel}:{lineno}:{line.rstrip()}"
+                            hits.append(entry)
+                            total_chars += len(entry) + 1
+                            if total_chars >= 8000:
+                                hits.append("... (tronque)")
+                                return "\n".join(hits)
+            except (OSError, UnicodeDecodeError):
+                continue
+    return "\n".join(hits) or f"(aucun match pour '{pattern}')"
 
 
 @tool("run_shell")

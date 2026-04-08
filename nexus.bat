@@ -2,15 +2,41 @@
 chcp 65001 >nul
 setlocal enabledelayedexpansion
 set "HERE=%~dp0"
-set "PY=C:\Users\ArtLi\AppData\Roaming\uv\tools\crewai\Scripts\python.exe"
 set "PYTHONIOENCODING=utf-8"
 
-if not exist "%PY%" (
-  echo [ERREUR] CrewAI introuvable. Installe-le :
-  echo     uv tool install crewai --with crewai-tools --with litellm
-  pause
-  exit /b 1
+REM ─── Detection dynamique de Python + crewai ─────────────────────────────────
+REM 1. env isole uv tool (le plus probable chez l'auteur)
+REM 2. python du PATH si crewai y est installe
+set "PY="
+
+if exist "C:\Users\%USERNAME%\AppData\Roaming\uv\tools\crewai\Scripts\python.exe" (
+  set "PY=C:\Users\%USERNAME%\AppData\Roaming\uv\tools\crewai\Scripts\python.exe"
+  goto :py_ok
 )
+
+for %%P in (python.exe) do (
+  if not "%%~$PATH:P"=="" (
+    "%%~$PATH:P" -c "import crewai" >nul 2>&1
+    if !errorlevel! equ 0 (
+      set "PY=%%~$PATH:P"
+      goto :py_ok
+    )
+  )
+)
+
+echo.
+echo [ERREUR] Python + crewai introuvables.
+echo.
+echo Installe CrewAI dans un environnement isole (recommande) :
+echo     uv tool install crewai --with crewai-tools --with litellm
+echo.
+echo Ou dans ton Python systeme :
+echo     pip install -r "%HERE%requirements.txt"
+echo.
+pause
+exit /b 1
+
+:py_ok
 
 REM Si arguments fournis en ligne de commande, passer direct
 if not "%~1"=="" (
@@ -28,6 +54,8 @@ echo ============================================================
 echo   NEXUS Crew - Lanceur interactif
 echo ============================================================
 echo.
+echo   Python : %PY%
+echo.
 echo   COMMANDES UTILES (ligne de commande) :
 echo.
 echo     nexus.bat "tache" --project C:/mon-projet
@@ -35,7 +63,8 @@ echo     nexus.bat "tache" --project C:/X --write        (ecrit reellement)
 echo     nexus.bat "tache" --project C:/X --deep         (gros projets)
 echo     nexus.bat "tache" --project C:/X --allow D:/lib (ajoute un dossier)
 echo.
-echo   AGENTS : Researcher -^> Architect -^> Coder -^> Critic
+echo   AGENTS : Researcher -^> Architect -^> Coder -^> Critic -^> Rework
+echo   COLLABORATION : delegation active, memoire partagee, cache session
 echo   FALLBACK auto entre modeles NVIDIA NIM si un tombe
 echo.
 echo ------------------------------------------------------------
@@ -59,7 +88,6 @@ echo ------------------------------------------------------------
 echo   Apercu du dossier
 echo ------------------------------------------------------------
 
-REM Apercu via PowerShell : top-level + compte total
 powershell -NoProfile -Command ^
   "$p = '!PROJECT!'; $items = Get-ChildItem -LiteralPath $p -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -notmatch '^(\.git|node_modules|__pycache__|\.venv|dist|build)$' } | Select-Object -First 25; foreach ($i in $items) { if ($i.PSIsContainer) { Write-Host ('   [DIR]  ' + $i.Name) } else { Write-Host ('   [FILE] ' + $i.Name) } }; $total = (Get-ChildItem -LiteralPath $p -Recurse -File -Force -ErrorAction SilentlyContinue | Measure-Object).Count; Write-Host ''; Write-Host ('   Total fichiers (recursif) : ' + $total)"
 
