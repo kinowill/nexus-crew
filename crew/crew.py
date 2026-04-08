@@ -51,16 +51,21 @@ from crewai import Agent, Task, Crew, LLM, BaseLLM, Process
 from crewai.tools import tool
 from pydantic import ConfigDict
 
-# ─── Cache LiteLLM disk (persiste entre runs) ─────────────────────────────────
-# Les appels identiques (même modèle + mêmes messages) sont servis depuis disque.
+# ─── Cache LiteLLM disk (scope = session courante uniquement) ─────────────────
+# Le cache est vidé à chaque démarrage pour éviter des réponses obsolètes
+# quand le code du projet a changé entre deux runs. Pendant la session, il
+# accélère les retries, les fallbacks et les questions reposées par délégation.
 try:
     import litellm
+    import shutil
     from litellm.caching.caching import Cache
     CACHE_DIR = Path(__file__).parent.parent / ".crew_cache"
+    if CACHE_DIR.exists():
+        shutil.rmtree(CACHE_DIR, ignore_errors=True)
     CACHE_DIR.mkdir(exist_ok=True)
     litellm.cache = Cache(type="disk", disk_cache_dir=str(CACHE_DIR))
     litellm.enable_cache()
-    print(f"  [cache LiteLLM actif : {CACHE_DIR}]")
+    print(f"  [cache LiteLLM actif — session uniquement : {CACHE_DIR}]")
 except Exception as _e:
     print(f"  [cache LiteLLM désactivé : {_e}]")
 
