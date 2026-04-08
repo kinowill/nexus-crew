@@ -135,7 +135,14 @@ class FallbackLLM(BaseLLM):
         # BaseLLM attend un "model" — on lui donne le premier de la chaîne
         super().__init__(model=chain[0], temperature=temperature)
         llms = [
-            LLM(model=m, api_key=API_KEY, base_url=NVIDIA_BASE, temperature=temperature)
+            LLM(
+                model=m,
+                api_key=API_KEY,
+                base_url=NVIDIA_BASE,
+                temperature=temperature,
+                # NIM Llama ne supporte pas les tool calls parallèles
+                parallel_tool_calls=False,
+            )
             for m in chain
         ]
         object.__setattr__(self, "_chain", chain)
@@ -143,6 +150,21 @@ class FallbackLLM(BaseLLM):
 
     def call(self, messages, tools=None, callbacks=None, available_functions=None,
              from_task=None, from_agent=None, response_model=None):
+        # --- Normalisation messages pour NVIDIA NIM ---
+        # Qwen et co exigent que TOUT system message soit en position 0.
+        # CrewAI (delegation, memory, planning) en injecte parfois au milieu.
+        # On fusionne tous les system messages en un seul au début.
+        if isinstance(messages, list) and messages and isinstance(messages[0], dict):
+            sys_parts = [m.get("content", "") for m in messages if m.get("role") == "system"]
+            others = [m for m in messages if m.get("role") != "system"]
+            if sys_parts:
+                merged_sys = {"role": "system", "content": "\n\n".join(s for s in sys_parts if s)}
+                messages = [merged_sys] + others
+            else:
+                messages = others
+        # NIM ne supporte pas response_format/grammar structuré sur la plupart des modèles
+        response_model = None
+
         last_err = None
         for idx, llm in enumerate(self._llms):
             try:
