@@ -45,6 +45,12 @@ if not API_KEY:
 os.environ["OPENAI_API_KEY"]  = API_KEY
 os.environ["OPENAI_API_BASE"] = NVIDIA_BASE
 
+# Tracing CrewAI = cloud (envoie prompts + outputs vers leur plateforme).
+# Force OFF pour éviter tout leak de code/secrets projet.
+os.environ["CREWAI_TRACING_ENABLED"] = "false"
+os.environ["CREWAI_DISABLE_TELEMETRY"] = "true"
+os.environ["OTEL_SDK_DISABLED"] = "true"
+
 # ─── Imports CrewAI (après config env) ────────────────────────────────────────
 
 from crewai import Agent, Task, Crew, LLM, BaseLLM, Process
