@@ -177,16 +177,20 @@ def _safe_path(rel: str) -> Path:
 
 
 @tool("read_file")
-def read_file_tool(path: str) -> str:
-    """Lit un fichier du projet. Path est relatif à la racine du projet."""
+def read_file_tool(path: str, offset: int = 0, limit: int = 40000) -> str:
+    """Lit un fichier. offset = position de départ en caractères, limit = taille max lue.
+    Pour les gros fichiers, appeler plusieurs fois avec des offsets différents."""
     try:
         p = _safe_path(path)
         if not p.is_file():
             return f"Pas un fichier : {path}"
         content = p.read_text(encoding="utf-8", errors="replace")
-        if len(content) > 20000:
-            return content[:20000] + f"\n\n[... tronqué, {len(content)} chars au total ...]"
-        return content
+        total = len(content)
+        chunk = content[offset:offset + limit]
+        header = f"[fichier {path} — taille totale {total} chars — lu {offset}..{offset+len(chunk)}]\n"
+        if offset + len(chunk) < total:
+            header += f"[reste {total - offset - len(chunk)} chars — rappelle read_file avec offset={offset+len(chunk)}]\n"
+        return header + chunk
     except Exception as e:
         return f"Erreur lecture {path} : {e}"
 
@@ -207,21 +211,33 @@ def write_file_tool(path: str, content: str) -> str:
 
 @tool("list_files")
 def list_files_tool(directory: str = ".") -> str:
-    """Liste les fichiers d'un dossier du projet (récursif, jusqu'à 200 entrées)."""
+    """Liste les fichiers d'un dossier (récursif, filtrage efficace des SKIP_DIRS, max 300 entrées)."""
     try:
         base = _safe_path(directory)
         if not base.is_dir():
             return f"Pas un dossier : {directory}"
         items = []
-        for p in sorted(base.rglob("*")):
-            if any(s in p.parts for s in SKIP_DIRS):
-                continue
-            rel = p.relative_to(_project())
-            kind = "DIR " if p.is_dir() else "FILE"
-            items.append(f"{kind} {rel}")
-            if len(items) >= 200:
-                items.append("... (tronqué)")
-                break
+
+        def walk(d: Path):
+            try:
+                entries = sorted(d.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower()))
+            except PermissionError:
+                return
+            for p in entries:
+                if len(items) >= 300:
+                    return
+                if p.name in SKIP_DIRS:
+                    continue
+                rel = p.relative_to(_project()) if _project() in p.parents or p == _project() else p
+                if p.is_dir():
+                    items.append(f"DIR  {rel}")
+                    walk(p)
+                else:
+                    items.append(f"FILE {rel}")
+
+        walk(base)
+        if len(items) >= 300:
+            items.append("... (tronqué à 300 — utilise grep pour cibler)")
         return "\n".join(items) or "(dossier vide)"
     except Exception as e:
         return f"Erreur list {directory} : {e}"
@@ -247,7 +263,11 @@ def grep_tool(pattern: str, glob: str = "*") -> str:
 @tool("run_shell")
 def run_shell_tool(command: str) -> str:
     """Exécute une commande shell dans le projet (timeout 120s). Respecte le flag --write pour les commandes destructives."""
-    destructive = any(w in command.lower() for w in ["rm ", "del ", "format ", "drop ", "> /dev/null"])
+    cl = command.lower()
+    destructive = any(w in cl for w in [
+        "rm ", "rm -", "rmdir", " rd ", "del ", "erase ", "format ", "drop ",
+        "remove-item", "shutdown", "mkfs", " dd ", ":(){ :|:& };:",
+    ])
     if destructive and not os.environ.get("CREW_WRITE_ENABLED"):
         return f"[DRY-RUN] Commande potentiellement destructive bloquée : {command}"
     try:
@@ -282,7 +302,7 @@ def make_researcher() -> Agent:
         llm=make_llm("researcher"),
         tools=READ_TOOLS,
         verbose=True,
-        allow_delegation=False,
+        allow_delegation=True,
         max_iter=8,
     )
 
@@ -300,7 +320,7 @@ def make_architect() -> Agent:
         llm=make_llm("architect"),
         tools=READ_TOOLS,
         verbose=True,
-        allow_delegation=False,
+        allow_delegation=True,
         max_iter=6,
     )
 
@@ -313,12 +333,14 @@ def make_coder() -> Agent:
             "Tu es un développeur senior. Tu reçois un plan et tu l'exécutes fidèlement. "
             "Tu lis les fichiers avant de les modifier. Tu utilises grep pour trouver les références. "
             "Tu écris du code propre, sans TODO ni placeholder, qui respecte les conventions du projet. "
-            "Tu utilises write_file pour persister les changements."
+            "Tu utilises write_file pour persister les changements. "
+            "COLLABORATION : si tu as un doute sur le projet, tu peux interroger le Researcher. "
+            "Si le plan est ambigu, tu peux demander clarification à l'Architect. Ne code jamais à l'aveugle."
         ),
         llm=make_llm("coder"),
         tools=FULL_TOOLS,
         verbose=True,
-        allow_delegation=False,
+        allow_delegation=True,
         max_iter=15,
     )
 
@@ -331,12 +353,14 @@ def make_critic() -> Agent:
             "Tu es un reviewer méticuleux. Tu cherches des problèmes — tu ne te contentes pas d'approuver. "
             "Tu relis le code contre le plan, tu lances les tests quand c'est pertinent, "
             "tu vérifies la sécurité, tu cherches les edge cases que le Coder a pu rater. "
-            "Tu finis par APPROVED ou CHANGES_NEEDED avec des corrections précises."
+            "Tu finis par APPROVED ou CHANGES_NEEDED avec des corrections précises. "
+            "COLLABORATION : tu peux renvoyer une question au Coder pour qu'il corrige avant validation, "
+            "ou demander au Researcher de vérifier un point du projet si tu as un doute."
         ),
         llm=make_llm("critic"),
         tools=FULL_TOOLS,
         verbose=True,
-        allow_delegation=False,
+        allow_delegation=True,
         max_iter=8,
     )
 
@@ -352,7 +376,7 @@ def make_scanner() -> Agent:
         llm=make_llm("scanner"),
         tools=READ_TOOLS,
         verbose=True,
-        allow_delegation=False,
+        allow_delegation=True,
         max_iter=5,
     )
 
@@ -461,6 +485,9 @@ def build_crew(task_text: str, project_path: Path, deep: bool) -> Crew:
         tasks=tasks,
         process=Process.sequential,
         verbose=True,
+        memory=False,  # désactivé : CrewAI memory nécessite un embedder, on s'appuie sur context=[...]
+        planning=True,  # phase de planning globale avant exécution
+        planning_llm=make_llm("architect"),
     )
 
 
