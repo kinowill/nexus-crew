@@ -829,6 +829,6 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 - **Repo modifié** : oui.
 - **Prod alignée** : N/A (outil local).
 - **Validation réelle** : non. À tester au prochain run réel sur un petit projet — vérifier que le Critic ne tente plus d'écrire ni d'appeler `run_shell`, et qu'il rend bien un verdict `APPROVED` / `CHANGES_NEEDED` sans toucher aux fichiers.
-- **Commit** : à venir.
+- **Commit** : `ea6e5a0` (poussé sur `origin/main`).
 - **Dette acceptée** : tant que le **Validation Agent** (§7.2 #6) n'existe pas, aucun agent ne lance les tests automatiquement. Cette dette est explicitement tolérée jusqu'à l'introduction du Validation Agent dans une phase ultérieure. Ne pas réintroduire de shell chez le Critic pour compenser.
 
