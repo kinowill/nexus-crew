@@ -11,6 +11,8 @@ secrets.json
 # ── Contexte personnel (données projet locales) ──────────────
 .nexus/
 context_store/
+.crew_cache/
+.crew_memory/
 
 # ── Python ─────────────────────────────────────────────────────
 __pycache__/

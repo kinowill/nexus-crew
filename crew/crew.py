@@ -51,6 +51,30 @@ from crewai import Agent, Task, Crew, LLM, BaseLLM, Process
 from crewai.tools import tool
 from pydantic import ConfigDict
 
+# ─── Cache LiteLLM disk (persiste entre runs) ─────────────────────────────────
+# Les appels identiques (même modèle + mêmes messages) sont servis depuis disque.
+try:
+    import litellm
+    from litellm.caching.caching import Cache
+    CACHE_DIR = Path(__file__).parent.parent / ".crew_cache"
+    CACHE_DIR.mkdir(exist_ok=True)
+    litellm.cache = Cache(type="disk", disk_cache_dir=str(CACHE_DIR))
+    litellm.enable_cache()
+    print(f"  [cache LiteLLM actif : {CACHE_DIR}]")
+except Exception as _e:
+    print(f"  [cache LiteLLM désactivé : {_e}]")
+
+# ─── Config embedder NVIDIA NIM (pour la mémoire CrewAI) ──────────────────────
+# Utilise le même endpoint que les LLM, avec un modèle d'embeddings gratuit.
+NVIDIA_EMBEDDER = {
+    "provider": "openai",
+    "config": {
+        "api_key": API_KEY,
+        "api_base": NVIDIA_BASE,
+        "model": "nvidia/nv-embedqa-e5-v5",
+    },
+}
+
 # ─── Config des modèles + fallbacks ───────────────────────────────────────────
 # Clé = rôle, valeur = [primaire, fallback_1, fallback_2]
 # LiteLLM accepte "openai/<model-id>" pour router vers notre base openai-compatible.
@@ -446,23 +470,37 @@ def build_crew(task_text: str, project_path: Path, deep: bool) -> Crew:
         context=[plan_task, code_task],
     )
 
+    rework_task = Task(
+        description=(
+            "Lis le verdict du Critic.\n"
+            "- Si le Critic a conclu par APPROVED : réponds simplement 'APPROVED — aucun changement nécessaire'.\n"
+            "- Si le Critic a conclu par CHANGES_NEEDED : applique chaque correction demandée "
+            "  en utilisant read_file + write_file. Ne touche QUE ce que le Critic demande. "
+            "  Liste les fichiers retouchés.\n"
+            "Tu peux interroger le Critic si une correction est ambiguë."
+        ),
+        expected_output="Soit 'APPROVED — aucun changement', soit la liste des corrections appliquées",
+        agent=coder,
+        context=[plan_task, code_task, review_task],
+    )
+
     final_task = Task(
         description=(
             f"Synthèse finale pour l'utilisateur.\n"
             f"Tâche originale : {task_text}\n\n"
             "Produis un rapport clair et concis :\n"
             "- Ce qui a été fait\n"
-            "- Ce qui a été reviewé\n"
+            "- Ce qui a été reviewé + corrections éventuelles appliquées\n"
             "- État final (succès / corrections demandées / bloqué)\n"
             "- Fichiers touchés avec leurs chemins\n"
             "- Points d'attention restants pour l'utilisateur"
         ),
         expected_output="Un rapport final markdown lisible par un humain non-développeur",
         agent=architect,
-        context=[research_task, plan_task, code_task, review_task],
+        context=[research_task, plan_task, code_task, review_task, rework_task],
     )
 
-    tasks  = [research_task, plan_task, code_task, review_task, final_task]
+    tasks  = [research_task, plan_task, code_task, review_task, rework_task, final_task]
     agents = [researcher, architect, coder, critic]
 
     if deep:
@@ -485,8 +523,10 @@ def build_crew(task_text: str, project_path: Path, deep: bool) -> Crew:
         tasks=tasks,
         process=Process.sequential,
         verbose=True,
-        memory=False,  # désactivé : CrewAI memory nécessite un embedder, on s'appuie sur context=[...]
-        planning=True,  # phase de planning globale avant exécution
+        memory=True,
+        embedder=NVIDIA_EMBEDDER,
+        cache=True,
+        planning=True,
         planning_llm=make_llm("architect"),
     )
 
