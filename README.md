@@ -49,10 +49,6 @@ suivant prend le relais automatiquement, tu vois `[fallback actif : <id>]`.
 - **`allow_delegation=True`** sur tous les agents → ils peuvent s'interroger
   en cours d'exécution (le Coder peut demander au Researcher, le Critic
   peut renvoyer au Coder).
-- **`planning=True`** → une phase de planning globale (pilotée par un LLM
-  Architect) coordonne les tâches avant exécution.
-- **`memory=True`** + embedder `nvidia/nv-embed-v1` → mémoire court/long
-  terme partagée entre agents, même hors du contexte explicite des tâches.
 - **Cache LiteLLM disk** — `.crew_cache/` — sert les appels identiques depuis
   le disque pendant la session (retries, délégations, fallbacks). **Vidé à
   chaque démarrage** pour éviter des réponses obsolètes quand le code du
@@ -60,6 +56,21 @@ suivant prend le relais automatiquement, tu vois `[fallback actif : <id>]`.
 - **Boucle Critic → Coder** via `rework_task` : après la review, le Coder
   applique les corrections du Critic avant la synthèse finale. Si tout est
   `APPROVED`, le rework est un no-op.
+- **`planning=True` et `memory=True` désactivés** : tous deux cassent sur
+  NVIDIA NIM (planning utilise un `response_format` JSON schema non
+  supporté ; memory injecte un system message hors position 0 que Qwen
+  rejette). Voir « Compat NIM » ci-dessous.
+
+### Compat NIM (patches dans `FallbackLLM`)
+
+Les modèles NIM gratuits ont chacun leurs lubies. `FallbackLLM.call()`
+normalise tout avant l'appel litellm :
+
+| Modèle | Symptôme | Patch |
+|---|---|---|
+| Qwen 3.5 397B | `System message must be at the beginning` | tous les system messages fusionnés en position 0 |
+| DeepSeek V3.2 | `Invalid grammar request` | `response_model=None` forcé |
+| Llama 3.3 70B | `single tool-calls at once` | `parallel_tool_calls=False` au constructeur LLM |
 
 ### Sécurité
 
@@ -202,6 +213,9 @@ souvent un souci de rate-limit NIM (40 req/min gratuit) — relance.
 - **Le binaire `grep`** est utilisé en chemin rapide (via Git Bash sur
   Windows). S'il est absent, fallback Python pur activé automatiquement
   (plus lent sur gros repos).
+- **Planning et memory CrewAI désactivés** sur NIM (incompatibilités
+  documentées dans « Compat NIM »). Si tu passes à un provider OpenAI/
+  Anthropic, tu peux les réactiver dans `build_crew()`.
 - **Pas de vraie boucle illimitée** Critic↔Coder : la boucle est un
   single-shot rework. Pour itérer jusqu'à `APPROVED`, il faudrait passer
   en `Process.hierarchical` avec un manager agent (plus cher en tokens).
