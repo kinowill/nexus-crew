@@ -809,3 +809,26 @@ Pour le développeur :
 
 Ce document maître doit être lu avant toute refonte importante du protocole ou des rôles agents.
 
+---
+
+## 19. Journal de validation
+
+> Trace des modifications apportées au projet, conformément au protocole
+> (distinction repo modifié / prod alignée / validation réelle).
+> Les entrées les plus récentes sont en haut.
+
+### 2026-04-08 — Phase 0 / Critic : retrait écriture et shell
+
+- **Scope** : `crew/crew.py` — `make_critic()` et `review_task`.
+- **Demande** : Phase 0 §2 — retirer les privilèges d'édition et de shell au Critic.
+- **Changement** :
+  - `make_critic()` passe de `tools=FULL_TOOLS` à `tools=READ_TOOLS` (lecture seule).
+  - Backstory renforcée : "Tu ne corriges JAMAIS toi-même : tu relis et tu bloques."
+  - `review_task` : la mention "Lance les tests si tu en trouves (run_shell)" est retirée, remplacée par une consigne explicite de lecture seule et d'escalade dans le feedback.
+- **Fichiers touchés** : `crew/crew.py`, `DOCUMENT_MAITRE_PROJET.md` (cette entrée).
+- **Repo modifié** : oui.
+- **Prod alignée** : N/A (outil local).
+- **Validation réelle** : non. À tester au prochain run réel sur un petit projet — vérifier que le Critic ne tente plus d'écrire ni d'appeler `run_shell`, et qu'il rend bien un verdict `APPROVED` / `CHANGES_NEEDED` sans toucher aux fichiers.
+- **Commit** : à venir.
+- **Dette acceptée** : tant que le **Validation Agent** (§7.2 #6) n'existe pas, aucun agent ne lance les tests automatiquement. Cette dette est explicitement tolérée jusqu'à l'introduction du Validation Agent dans une phase ultérieure. Ne pas réintroduire de shell chez le Critic pour compenser.
+

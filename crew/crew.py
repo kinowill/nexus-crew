@@ -447,11 +447,15 @@ def make_critic() -> Agent:
             "Tu relis le code contre le plan, tu lances les tests quand c'est pertinent, "
             "tu vérifies la sécurité, tu cherches les edge cases que le Coder a pu rater. "
             "Tu finis par APPROVED ou CHANGES_NEEDED avec des corrections précises. "
+            "Tu ne corriges JAMAIS toi-même : tu relis et tu bloques. La correction revient au Coder. "
             "COLLABORATION : tu peux renvoyer une question au Coder pour qu'il corrige avant validation, "
             "ou demander au Researcher de vérifier un point du projet si tu as un doute."
         ),
         llm=make_llm("critic"),
-        tools=FULL_TOOLS,
+        # Lecture seule : le Critic relit et bloque, il ne modifie rien.
+        # Pas de run_shell non plus tant que le Validation Agent n'existe pas
+        # (dette acceptée Phase 0 — voir DOCUMENT_MAITRE_PROJET §Journal 2026-04-08).
+        tools=READ_TOOLS,
         verbose=True,
         allow_delegation=True,
         max_iter=8,
@@ -531,7 +535,8 @@ def build_crew(task_text: str, project_path: Path, deep: bool) -> Crew:
             "- Confronte les changements au plan de l'Architect\n"
             "- Cherche bugs, failles de sécurité, edge cases\n"
             "- Vérifie les régressions potentielles (grep sur les symboles modifiés)\n"
-            "- Lance les tests si tu en trouves (run_shell)\n"
+            "- Tu es en LECTURE SEULE : pas d'écriture, pas de shell, pas de tests. "
+            "Si tu penses qu'un test devrait être lancé, mentionne-le dans ton feedback.\n"
             "Finis par APPROVED si tout est bon, ou CHANGES_NEEDED avec les corrections à apporter"
         ),
         expected_output="APPROVED ou CHANGES_NEEDED avec feedback détaillé",
