@@ -4,7 +4,7 @@ setlocal enabledelayedexpansion
 set "HERE=%~dp0"
 set "PYTHONIOENCODING=utf-8"
 
-REM ─── Detection dynamique de Python + crewai ─────────────────────────────────
+REM --- Detection dynamique de Python + crewai ---
 REM 1. env isole uv tool (le plus probable chez l'auteur)
 REM 2. python du PATH si crewai y est installe
 set "PY="
