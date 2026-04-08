@@ -841,7 +841,7 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
   3. Avec `--allow-shell`, une commande `rm -rf foo` doit être refusée avec message "hors allowlist".
   4. Avec `--allow-shell`, `git log | head` doit être refusé avec message "chainage non autorisé".
   5. Avec `--allow-shell`, `python --version` doit passer.
-- **Commit** : à venir.
+- **Commit** : `d4591d3` (poussé sur `origin/main`).
 - **Limites Phase 0 connues** : l'allowlist reste binaire (autorisé / pas autorisé). Pas encore de catégories fines (`git_read` vs `git_write` vs `package_install`). Une commande comme `git push` passe si shell est activé, sans gate supplémentaire. Le modèle de catégories §11 du doc maître reste à faire dans une phase ultérieure (hors Phase 0).
 
 ### 2026-04-08 — Phase 0 / Permissions : lisibilité
