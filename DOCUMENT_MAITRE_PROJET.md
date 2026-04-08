@@ -829,7 +829,7 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 - **Repo modifié** : oui.
 - **Prod alignée** : N/A.
 - **Validation réelle** : non. À tester : lancer `python crew/crew.py "x" -p .` (sans `--write`) puis avec `--write` et `--allow`, vérifier que la bannière reflète bien chaque cas.
-- **Commit** : à venir.
+- **Commit** : `812b538` (poussé sur `origin/main`).
 
 ### 2026-04-08 — Phase 0 / Installation déterministe
 
