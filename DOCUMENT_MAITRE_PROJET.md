@@ -828,7 +828,7 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 - **Repo modifié** : oui.
 - **Prod alignée** : N/A.
 - **Validation réelle** : non.
-- **Commit** : à venir.
+- **Commit** : `12b6a63` (poussé sur `origin/main`).
 
 ### 2026-04-08 — Phase 0 / Shell durci (fin Phase 0)
 
