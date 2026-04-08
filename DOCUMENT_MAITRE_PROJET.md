@@ -817,6 +817,20 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 > (distinction repo modifié / prod alignée / validation réelle).
 > Les entrées les plus récentes sont en haut.
 
+### 2026-04-08 — Phase 0 / Permissions : lisibilité
+
+- **Scope** : `crew/crew.py` — docstring module + bannière de démarrage CLI.
+- **Demande** : Phase 0 §5 — clarifier les permissions (pas encore les refondre).
+- **Changements** :
+  - Bannière de démarrage : affiche désormais explicitement l'état de chaque catégorie de permission (`read`, `write_file`, `run_shell`, `shell destr.`) au lieu d'une simple ligne `Écriture: ACTIVÉE/DRY-RUN`.
+  - Docstring module : section `Permissions (Phase 0)` qui documente l'état réel des capacités par agent et la dette connue.
+- **Dette documentée** : le flag `--write` pilote actuellement à la fois `write_file` **et** les commandes shell destructives. Cet amalgame historique sera séparé dans le chantier Phase 0 §1 (Shell), pas avant — garder `--write` comme porte unique jusque-là pour ne pas casser l'UX.
+- **Fichiers touchés** : `crew/crew.py`, `DOCUMENT_MAITRE_PROJET.md`.
+- **Repo modifié** : oui.
+- **Prod alignée** : N/A.
+- **Validation réelle** : non. À tester : lancer `python crew/crew.py "x" -p .` (sans `--write`) puis avec `--write` et `--allow`, vérifier que la bannière reflète bien chaque cas.
+- **Commit** : à venir.
+
 ### 2026-04-08 — Phase 0 / Installation déterministe
 
 - **Scope** : `requirements.txt`, `README.md`, `nexus.bat`.

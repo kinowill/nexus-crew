@@ -17,6 +17,13 @@ Usage :
   python crew.py "ta tâche" --project C:/chemin/du/projet
   python crew.py "refactore l'auth" --project C:/mon-projet --write
   python crew.py "audit complet" --project C:/gros-projet --deep --write
+
+Permissions (Phase 0) :
+  - read         : toujours ON, borne par _safe_path() au projet + --allow
+  - write_file   : OFF par defaut, ON avec --write
+  - run_shell    : disponible pour le Coder uniquement (Critic est lecture seule)
+  - shell destr. : lie au meme flag --write (amalgame historique, sera separe
+                   dans le chantier #1 Shell — voir DOCUMENT_MAITRE_PROJET §19)
 """
 
 import argparse
@@ -666,8 +673,21 @@ def main():
     print("╚════════════════════════════════════════════════════════════╝")
     print(f"  Projet  : {project_path}")
     print(f"  Mode    : {'DEEP (5 agents)' if args.deep else 'NORMAL (4 agents)'}")
-    print(f"  Écriture: {'ACTIVÉE' if args.write else 'DRY-RUN (utiliser --write pour activer)'}")
     print(f"  Tâche   : {args.task}")
+    print()
+    # Permissions actives — rendu explicite pour que l'utilisateur voie
+    # exactement ce que les agents sont autorisés à faire.
+    # Limitation Phase 0 connue : `--write` pilote a la fois write_file ET
+    # les commandes shell destructives (amalgame historique). La separation
+    # en deux flags distincts est prevue dans le chantier #1 Shell.
+    write_on = bool(args.write)
+    n_extra = len(extra_roots)
+    roots_detail = f"projet + {n_extra} dossier(s) --allow" if n_extra else "projet uniquement"
+    print("  Permissions actives :")
+    print(f"    - read         : ON  ({roots_detail})")
+    print(f"    - write_file   : {'ON ' if write_on else 'OFF'} (dry-run si OFF)")
+    print(f"    - run_shell    : ON  (disponible pour Coder uniquement)")
+    print(f"    - shell destr. : {'ON ' if write_on else 'OFF'} (lie a --write, dette Phase 0)")
     print()
 
     crew = build_crew(args.task, project_path, deep=args.deep)
