@@ -828,7 +828,7 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 - **Repo modifié** : oui.
 - **Prod alignée** : N/A.
 - **Validation réelle** : non. À tester : `python scripts/discover_models.py` doit toujours lister les modèles sans erreur d'import et sans tenter d'écrire un fichier. `nexus.bat` doit afficher la bannière corrigée.
-- **Commit** : à venir.
+- **Commit** : `a6cd042` (local, non poussé).
 
 ### 2026-04-08 — Phase 0 / Critic : retrait écriture et shell
 
