@@ -832,7 +832,7 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 - **Repo modifié** : oui.
 - **Prod alignée** : N/A.
 - **Validation réelle** : non. À tester : réinstaller via la commande `uv tool` corrigée, puis lancer `python scripts/test_connection.py` (tous les imports doivent passer) et `python crew/crew.py "test" -p .` — le log doit afficher `[cache LiteLLM actif]` et non plus `[cache LiteLLM désactivé]`.
-- **Commit** : à venir.
+- **Commit** : `9770045` (poussé sur `origin/main`).
 
 ### 2026-04-08 — Phase 0 / Incohérences doc-code
 
