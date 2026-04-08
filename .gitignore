@@ -3,8 +3,12 @@
 *.key
 *.secret
 secrets.json
+.claude/
 
-# ── Contexte personnel (données de projet locales) ─────────────
+# ── Archives locales ───────────────────────────────────────────
+.old/
+
+# ── Contexte personnel (données projet locales) ──────────────
 .nexus/
 context_store/
 
@@ -15,6 +19,7 @@ __pycache__/
 .venv/
 venv/
 env/
+*.egg-info/
 
 # ── Scripts utilitaires ponctuels (chemins locaux) ─────────────
 scripts/append_claude_md.py

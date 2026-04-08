@@ -1,17 +1,24 @@
 @echo off
 chcp 65001 >nul
-title NEXUS Chat - Agents IA autonomes
-color 0B
+setlocal enabledelayedexpansion
+set "HERE=%~dp0"
+set "PY=C:\Users\ArtLi\AppData\Roaming\uv\tools\crewai\Scripts\python.exe"
+set "PYTHONIOENCODING=utf-8"
 
-python -c "print(); print('  \u2554' + '\u2550'*50 + '\u2557'); print('  \u2551' + '        NEXUS \u2014 Agents IA autonomes              ' + '\u2551'); print('  \u2551' + '   Brain : Qwen 3.5 | Workers : Kimi / Nemotron  ' + '\u2551'); print('  \u255a' + '\u2550'*50 + '\u255d'); print()"
-
-set /p PROJET=" Chemin du projet (Entree = repertoire courant) : "
-
-if "%PROJET%"=="" (
-    python -X utf8 "%~dp0nexus_chat.py"
-) else (
-    python -X utf8 "%~dp0nexus_chat.py" --project "%PROJET%"
+if not exist "%PY%" (
+  echo [ERREUR] CrewAI introuvable. Installe-le :
+  echo     uv tool install crewai --with crewai-tools --with litellm
+  pause
+  exit /b 1
 )
 
-echo.
+if "%~1"=="" (
+  set /p TASK="Tache NEXUS : "
+  set /p PROJECT="Projet (chemin, defaut=.) : "
+  if "!PROJECT!"=="" set "PROJECT=."
+  "%PY%" "%HERE%crew\crew.py" "!TASK!" --project "!PROJECT!" %*
+) else (
+  "%PY%" "%HERE%crew\crew.py" %*
+)
+
 pause
