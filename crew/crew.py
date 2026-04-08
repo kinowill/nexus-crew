@@ -149,12 +149,31 @@ def _project() -> Path:
     return Path(os.environ["CREW_PROJECT"])
 
 
+def _allowed_roots() -> list[Path]:
+    """Projet principal + dossiers supplémentaires autorisés via --allow."""
+    roots = [_project()]
+    extra = os.environ.get("CREW_ALLOWED_ROOTS", "")
+    if extra:
+        roots += [Path(r) for r in extra.split(os.pathsep) if r]
+    return roots
+
+
 def _safe_path(rel: str) -> Path:
-    """Empêche les évasions de répertoire projet."""
-    full = (_project() / rel).resolve()
-    if _project() not in full.parents and full != _project():
-        raise ValueError(f"Chemin hors du projet : {rel}")
-    return full
+    """Résout un chemin et vérifie qu'il est dans une racine autorisée.
+
+    - Chemin relatif → résolu depuis le projet principal
+    - Chemin absolu  → accepté s'il est dans une racine autorisée (--allow)
+    """
+    p = Path(rel)
+    full = p.resolve() if p.is_absolute() else (_project() / p).resolve()
+    for root in _allowed_roots():
+        root_r = root.resolve()
+        if full == root_r or root_r in full.parents:
+            return full
+    raise ValueError(
+        f"Chemin hors des racines autorisées : {rel}. "
+        f"Utilise --allow pour ajouter un dossier."
+    )
 
 
 @tool("read_file")
@@ -471,6 +490,9 @@ def main():
                         help="Active l'écriture réelle de fichiers (sinon dry-run)")
     parser.add_argument("--deep", "-d", action="store_true",
                         help="Active le mode Scanner + Researcher pour les gros projets")
+    parser.add_argument("--allow", "-a", action="append", default=[],
+                        help="Dossier supplémentaire accessible (répétable). "
+                             "Ex : --allow C:/autres/libs --allow D:/data")
     args = parser.parse_args()
 
     project_path = Path(args.project).resolve()
@@ -481,6 +503,18 @@ def main():
     os.environ["CREW_PROJECT"] = str(project_path)
     if args.write:
         os.environ["CREW_WRITE_ENABLED"] = "1"
+
+    # Racines supplémentaires autorisées (--allow)
+    extra_roots = []
+    for r in args.allow:
+        rp = Path(r).resolve()
+        if not rp.is_dir():
+            print(f"ATTENTION : --allow {r} n'est pas un dossier, ignoré.")
+            continue
+        extra_roots.append(str(rp))
+    if extra_roots:
+        os.environ["CREW_ALLOWED_ROOTS"] = os.pathsep.join(extra_roots)
+        print(f"  Accès : {project_path} + {len(extra_roots)} dossier(s) supplémentaire(s)")
 
     print()
     print("╔════════════════════════════════════════════════════════════╗")
