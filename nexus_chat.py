@@ -210,9 +210,10 @@ def parse_brain_output(raw: str) -> dict:
     """
     raw = raw.strip()
 
-    # Chercher DELEGATE:
-    if raw.startswith("DELEGATE:"):
-        json_part = raw[len("DELEGATE:"):].strip()
+    # Chercher DELEGATE: n'importe où dans le texte (Qwen ajoute parfois du texte avant)
+    delegate_idx = raw.find("DELEGATE:")
+    if delegate_idx != -1:
+        json_part = raw[delegate_idx + len("DELEGATE:"):].strip()
         try:
             start = json_part.find("{")
             end   = json_part.rfind("}") + 1
@@ -222,7 +223,7 @@ def parse_brain_output(raw: str) -> dict:
         except Exception:
             pass  # JSON malformé → traité comme FINAL
 
-    # Chercher FINAL:
+    # Chercher FINAL: n'importe où dans le texte
     if "FINAL:" in raw:
         idx = raw.index("FINAL:")
         response = raw[idx + len("FINAL:"):].strip()
@@ -316,7 +317,8 @@ WORKER_FALLBACKS = {
 }
 
 async def call_worker(worker: str, task: str,
-                      project_context: str, previous_output: str = "") -> str:
+                      project_context: str, previous_output: str = "",
+                      file_context: str = "") -> str:
     """
     Appelle un worker spécialisé. Retourne son output brut.
     Ne prend aucune décision de routage.
@@ -325,9 +327,13 @@ async def call_worker(worker: str, task: str,
     if project_context:
         system += f"\n\nContexte projet :\n{project_context[:1500]}"
 
-    user_content = task
+    parts = []
+    if file_context:
+        parts.append(f"Fichiers du projet :\n\n{file_context}")
+    parts.append(f"Tâche : {task}")
     if previous_output:
-        user_content = f"Travail précédent à améliorer :\n{previous_output[:2000]}\n\nNouvelle tâche : {task}"
+        parts.append(f"Travail précédent à améliorer :\n{previous_output[:2000]}")
+    user_content = "\n\n".join(parts)
 
     messages = [
         {"role": "system", "content": system},
@@ -350,7 +356,9 @@ async def call_worker(worker: str, task: str,
 # ─── Boucle Brain + Workers ───────────────────────────────────────────────────
 
 async def orchestrate(task: str, project_context: str,
-                      conv_history: list, brain_mode: str) -> tuple[str, str]:
+                      conv_history: list, brain_mode: str,
+                      project_path: Path | None = None,
+                      write_files: bool = False) -> tuple[str, str]:
     """
     Boucle principale :
       Brain décide → Worker exécute → Brain évalue → ... → Brain: FINAL
@@ -392,10 +400,25 @@ async def orchestrate(task: str, project_context: str,
             (r["output"] for r in reversed(results) if r["worker"] == worker), ""
         )
 
+        # Lire les fichiers pertinents pour cette tâche
+        file_ctx = ""
+        if project_path:
+            file_ctx = read_relevant_files(worker_task, project_path)
+            if file_ctx:
+                print(f"{DIM}[fichiers injectés]{R} ", end="", flush=True)
+
         worker_output = await call_worker(
-            worker, worker_task, project_context, last_same_worker
+            worker, worker_task, project_context, last_same_worker, file_ctx
         )
         print(f"{GR}✓{R}")
+
+        # Écrire les fichiers générés si --write actif
+        if project_path:
+            written = extract_and_write_files(worker_output, project_path, write_files)
+            if written:
+                print(f"  {GR}Fichiers écrits :{R}")
+                for f in written:
+                    print(f"    {DIM}✓ {f}{R}")
 
         results.append({
             "worker": worker,
@@ -451,6 +474,51 @@ def list_files(path: Path) -> list[str]:
         pass
     return sorted(files)[:60]
 
+def read_relevant_files(task: str, project_path: Path, max_chars: int = 8000) -> str:
+    """Lit les fichiers pertinents pour la tâche et retourne leur contenu concaténé."""
+    files = list_files(project_path)
+    if not files:
+        return ""
+
+    # Fichiers explicitement mentionnés dans la tâche
+    task_lower = task.lower()
+    mentioned  = [f for f in files if Path(f).name.lower() in task_lower or f.lower() in task_lower]
+    candidates = mentioned if mentioned else files
+
+    parts = []
+    total = 0
+    for rel in candidates:
+        full = project_path / rel
+        try:
+            text    = full.read_text(encoding="utf-8", errors="replace")
+            snippet = f"// === FICHIER: {rel} ===\n{text[:3000]}"
+            if total + len(snippet) > max_chars:
+                break
+            parts.append(snippet)
+            total += len(snippet)
+        except Exception:
+            pass
+    return "\n\n".join(parts)
+
+
+def extract_and_write_files(response: str, project_path: Path, write_files: bool) -> list[str]:
+    """Parse les blocs // === FICHIER: path === et écrit les fichiers si write_files=True."""
+    pattern = r'//\s*===\s*FICHIER:\s*(.+?)\s*===\n(.*?)(?=//\s*===\s*FICHIER:|\Z)'
+    matches  = re.findall(pattern, response, re.DOTALL)
+    written  = []
+    for rel_path, code in matches:
+        rel_path = rel_path.strip()
+        code     = code.strip()
+        if not rel_path or not code:
+            continue
+        if write_files and project_path:
+            full = project_path / rel_path
+            full.parent.mkdir(parents=True, exist_ok=True)
+            full.write_text(code, encoding="utf-8")
+            written.append(rel_path)
+    return written
+
+
 # ─── Interface conversationnelle ──────────────────────────────────────────────
 
 async def chat_loop(project_path: Path, write_files: bool, brain_mode: str):
@@ -493,6 +561,7 @@ async def chat_loop(project_path: Path, write_files: bool, brain_mode: str):
   {CY}/quit{R}    — quitter
   {CY}/context{R} — contexte projet mémorisé
   {CY}/files{R}   — fichiers du projet
+  {CY}/init{R}    — scanner le projet et créer .nexus/context.md
   {CY}/clear{R}   — effacer l'historique de conversation
   {CY}/write{R}   — activer/désactiver l'écriture de fichiers
   {CY}/brain{R}   — voir quel Brain est actif
@@ -511,6 +580,19 @@ async def chat_loop(project_path: Path, write_files: bool, brain_mode: str):
                 else:
                     print(f"  {YL}Aucun fichier de code trouvé.{R}")
                 print()
+            elif cmd == "/init":
+                print(f"  {DIM}Scan du projet en cours...{R}")
+                files = list_files(project_path)
+                file_ctx = read_relevant_files("", project_path, max_chars=6000)
+                ts = datetime.now().strftime("%Y-%m-%d %H:%M")
+                summary  = f"# Contexte projet — {ts}\n\n"
+                summary += f"Fichiers ({len(files)}) :\n"
+                summary += "\n".join(f"  - {f}" for f in files[:40])
+                if file_ctx:
+                    summary += f"\n\n## Contenu des fichiers clés\n\n{file_ctx}"
+                save_context(project_path, summary)
+                project_context = load_context(project_path)
+                print(f"  {GR}Contexte initialisé — {len(files)} fichiers indexés.{R}")
             elif cmd == "/clear":
                 conv_history.clear()
                 print(f"  {GR}Historique effacé.{R}")
@@ -530,7 +612,8 @@ async def chat_loop(project_path: Path, write_files: bool, brain_mode: str):
         if needs_orchestration(user_input):
             # Boucle complète Brain + Workers
             response, last_brain = await orchestrate(
-                user_input, project_context, conv_history, brain_mode
+                user_input, project_context, conv_history, brain_mode,
+                project_path, write_files
             )
         else:
             # Réponse directe du Brain (questions simples)
@@ -538,9 +621,17 @@ async def chat_loop(project_path: Path, write_files: bool, brain_mode: str):
             print(f"  {DIM}→ {b_name} (direct){R}", end=" ", flush=True)
             decision = await call_brain(user_input, [], project_context,
                                         conv_history, brain_mode)
-            response = decision.get("response", "")
             last_brain = "claude" if brain_mode == "claude" else "qwen"
-            print(f"{GR}✓{R}")
+            if decision["action"] == "delegate":
+                # Le Brain veut déléguer → boucle complète
+                print(f"{GR}→ orchestration{R}")
+                response, last_brain = await orchestrate(
+                    user_input, project_context, conv_history, brain_mode,
+                    project_path, write_files
+                )
+            else:
+                response = decision.get("response", "")
+                print(f"{GR}✓{R}")
 
         # ── Affichage ────────────────────────────────────────────────────────
         if response:
