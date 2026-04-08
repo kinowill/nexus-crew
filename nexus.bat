@@ -9,8 +9,8 @@ REM 1. env isole uv tool (le plus probable chez l'auteur)
 REM 2. python du PATH si crewai y est installe
 set "PY="
 
-if exist "C:\Users\%USERNAME%\AppData\Roaming\uv\tools\crewai\Scripts\python.exe" (
-  set "PY=C:\Users\%USERNAME%\AppData\Roaming\uv\tools\crewai\Scripts\python.exe"
+if exist "%USERPROFILE%\AppData\Roaming\uv\tools\crewai\Scripts\python.exe" (
+  set "PY=%USERPROFILE%\AppData\Roaming\uv\tools\crewai\Scripts\python.exe"
   goto :py_ok
 )
 
