@@ -64,7 +64,7 @@ echo     nexus.bat "tache" --project C:/X --deep         (gros projets)
 echo     nexus.bat "tache" --project C:/X --allow D:/lib (ajoute un dossier)
 echo.
 echo   AGENTS : Researcher -^> Architect -^> Coder -^> Critic -^> Rework
-echo   COLLABORATION : delegation active, memoire partagee, cache session
+echo   COLLABORATION : delegation active, cache session
 echo   FALLBACK auto entre modeles NVIDIA NIM si un tombe
 echo.
 echo ------------------------------------------------------------

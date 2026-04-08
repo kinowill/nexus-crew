@@ -6,11 +6,11 @@ et identifie lesquels correspondent aux rôles NEXUS.
 
 Usage : python scripts/discover_models.py
 
-Après l'exécution, mets à jour mcp-servers/nexus/models.json
-avec les IDs exacts trouvés.
+Script purement informatif : il affiche les modèles pertinents et des
+suggestions par rôle. Pour les utiliser, reporter manuellement les IDs
+dans MODEL_CHAINS de crew/crew.py.
 """
 
-import json
 import os
 import sys
 from pathlib import Path
@@ -95,25 +95,6 @@ def main():
     for role, model_id in roles.items():
         status = "✅" if model_id else "❌ Non trouvé"
         print(f"  {role:12s} → {model_id or 'À chercher manuellement'} {status}")
-
-    # Écrire un models.json mis à jour
-    models_file = Path(__file__).parent.parent / "mcp-servers" / "nexus" / "models.json"
-    if models_file.exists():
-        current = json.loads(models_file.read_text(encoding="utf-8"))
-        updated = False
-        for role, model_id in roles.items():
-            if model_id and role in current and not current[role].get("confirmed", False):
-                current[role]["id"] = model_id
-                current[role]["confirmed"] = True
-                current[role].pop("note", None)
-                updated = True
-
-        if updated:
-            current["_last_updated"] = "2026-04-07 (auto-discover)"
-            models_file.write_text(json.dumps(current, indent=2, ensure_ascii=False), encoding="utf-8")
-            print("\n✅ models.json mis à jour automatiquement avec les IDs confirmés.")
-        else:
-            print("\n⚠ models.json non modifié (tous déjà confirmés ou non trouvés).")
 
 
 if __name__ == "__main__":

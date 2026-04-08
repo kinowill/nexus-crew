@@ -817,6 +817,19 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 > (distinction repo modifié / prod alignée / validation réelle).
 > Les entrées les plus récentes sont en haut.
 
+### 2026-04-08 — Phase 0 / Incohérences doc-code
+
+- **Scope** : `nexus.bat`, `scripts/discover_models.py`.
+- **Demande** : Phase 0 §4 — corriger les incohérences entre doc, batch et code réel.
+- **Changements** :
+  - `nexus.bat` : la bannière annonçait `memoire partagee` alors que `memory=True` est désactivé dans `crew.py` (incompat NIM). Mention retirée.
+  - `scripts/discover_models.py` : suppression du bloc mort qui écrivait vers `mcp-servers/nexus/models.json` (chemin fantôme inexistant dans le repo, `if exists():` toujours faux). Docstring corrigée : le script redevient purement informatif, le report vers `MODEL_CHAINS` est manuel. Import `json` retiré (plus utilisé).
+- **Fichiers touchés** : `nexus.bat`, `scripts/discover_models.py`, `DOCUMENT_MAITRE_PROJET.md`.
+- **Repo modifié** : oui.
+- **Prod alignée** : N/A.
+- **Validation réelle** : non. À tester : `python scripts/discover_models.py` doit toujours lister les modèles sans erreur d'import et sans tenter d'écrire un fichier. `nexus.bat` doit afficher la bannière corrigée.
+- **Commit** : à venir.
+
 ### 2026-04-08 — Phase 0 / Critic : retrait écriture et shell
 
 - **Scope** : `crew/crew.py` — `make_critic()` et `review_task`.
