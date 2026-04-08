@@ -110,12 +110,16 @@ set /p DEEP="  Mode deep (gros projets)     ? [o/N] : "
 set "DFLAG="
 if /i "!DEEP!"=="o" set "DFLAG=--deep"
 
+set /p SHELL="  Activer le shell des agents  ? [o/N] : "
+set "SFLAG="
+if /i "!SHELL!"=="o" set "SFLAG=--allow-shell"
+
 echo.
 echo ------------------------------------------------------------
 echo   Lancement du Crew...
 echo ------------------------------------------------------------
 echo.
-"%PY%" "%HERE%crew\crew.py" "!TASK!" --project "!PROJECT!" !WFLAG! !DFLAG!
+"%PY%" "%HERE%crew\crew.py" "!TASK!" --project "!PROJECT!" !WFLAG! !DFLAG! !SFLAG!
 
 echo.
 pause

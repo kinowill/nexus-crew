@@ -20,10 +20,10 @@ Usage :
 
 Permissions (Phase 0) :
   - read         : toujours ON, borne par _safe_path() au projet + --allow
-  - write_file   : OFF par defaut, ON avec --write
-  - run_shell    : disponible pour le Coder uniquement (Critic est lecture seule)
-  - shell destr. : lie au meme flag --write (amalgame historique, sera separe
-                   dans le chantier #1 Shell — voir DOCUMENT_MAITRE_PROJET §19)
+  - write_file   : OFF par defaut, ON avec --write (Coder uniquement)
+  - run_shell    : OFF par defaut, ON avec --allow-shell (Coder uniquement).
+                   shell=False, allowlist stricte de binaires, pas de chainage.
+                   Critic est toujours en lecture seule.
 """
 
 import argparse
@@ -360,19 +360,67 @@ def grep_tool(pattern: str, glob: str = "*") -> str:
     return "\n".join(hits) or f"(aucun match pour '{pattern}')"
 
 
+# Allowlist de binaires exécutables par run_shell_tool (Phase 0 #1).
+# Tout ce qui n'est pas la-dedans est refuse, point. Plus de blacklist naive.
+# Les builtins cmd.exe (dir, type) sont exclus : shell=False ne les execute pas,
+# le Coder utilise list_files_tool et read_file_tool a la place.
+SHELL_ALLOWLIST = {
+    "python", "python3", "py",
+    "pytest",
+    "node", "npm", "npx", "pnpm", "yarn",
+    "git",
+    "grep", "rg", "find", "where",
+    "ls", "cat", "head", "tail",
+    "cargo", "go", "make",
+    "echo",
+}
+
+# Metacaracteres shell refuses : un appel = une commande, pas de chainage.
+# Le shell=False ne les interprete pas, mais on les rejette explicitement
+# pour donner un message clair a l'agent plutot que des erreurs obscures.
+SHELL_FORBIDDEN_META = ["|", ";", "&&", "||", ">", "<", "`", "$(", ">>", "<<"]
+
+
 @tool("run_shell")
 def run_shell_tool(command: str) -> str:
-    """Exécute une commande shell dans le projet (timeout 120s). Respecte le flag --write pour les commandes destructives."""
-    cl = command.lower()
-    destructive = any(w in cl for w in [
-        "rm ", "rm -", "rmdir", " rd ", "del ", "erase ", "format ", "drop ",
-        "remove-item", "shutdown", "mkfs", " dd ", ":(){ :|:& };:",
-    ])
-    if destructive and not os.environ.get("CREW_WRITE_ENABLED"):
-        return f"[DRY-RUN] Commande potentiellement destructive bloquée : {command}"
+    """Exécute une commande dans le projet (shell=False, allowlist stricte, timeout 120s).
+
+    Une seule commande par appel. Chaînage shell (| ; && > < etc.) refusé.
+    Binaires autorisés : python, pytest, node, npm, pnpm, git, grep, rg,
+    ls, cat, head, tail, cargo, go, make, echo, etc. (voir SHELL_ALLOWLIST).
+    """
+    import shlex
+
+    # 1. Refuser tout metacaractere shell (chainage, redirection, subst).
+    for meta in SHELL_FORBIDDEN_META:
+        if meta in command:
+            return (
+                f"[REFUSE] Chainage ou redirection shell non autorise ('{meta}'). "
+                f"Lance une seule commande a la fois, sans pipe ni redirection."
+            )
+
+    # 2. Parser proprement en argv.
+    try:
+        argv = shlex.split(command, posix=True)
+    except ValueError as e:
+        return f"[REFUSE] Parsing commande invalide : {e}"
+    if not argv:
+        return "[REFUSE] Commande vide."
+
+    # 3. Normaliser le binaire : basename + sans extension .exe, lowercase.
+    binary = Path(argv[0]).name.lower()
+    if binary.endswith(".exe"):
+        binary = binary[:-4]
+    if binary not in SHELL_ALLOWLIST:
+        return (
+            f"[REFUSE] Binaire '{binary}' hors allowlist. "
+            f"Autorises : {', '.join(sorted(SHELL_ALLOWLIST))}"
+        )
+
+    # 4. Execution reelle, shell=False.
     try:
         result = subprocess.run(
-            command, shell=True, cwd=str(_project()),
+            argv, shell=False, cwd=str(_project()),
             capture_output=True, text=True, timeout=120
         )
         out = (result.stdout or "")[-3000:]
@@ -380,12 +428,13 @@ def run_shell_tool(command: str) -> str:
         return f"exit={result.returncode}\nstdout:\n{out}\nstderr:\n{err}"
     except subprocess.TimeoutExpired:
         return "Timeout (>120s)"
+    except FileNotFoundError:
+        return f"[REFUSE] Binaire '{argv[0]}' introuvable dans le PATH."
     except Exception as e:
         return f"Erreur shell : {e}"
 
 
 READ_TOOLS = [read_file_tool, list_files_tool, grep_tool]
-FULL_TOOLS = READ_TOOLS + [write_file_tool, run_shell_tool]
 
 
 # ─── Agents ───────────────────────────────────────────────────────────────────
@@ -438,7 +487,13 @@ def make_coder() -> Agent:
             "Si le plan est ambigu, tu peux demander clarification à l'Architect. Ne code jamais à l'aveugle."
         ),
         llm=make_llm("coder"),
-        tools=FULL_TOOLS,
+        # Le Coder a toujours read + write_file. run_shell n'est ajoute que
+        # si --allow-shell est explicitement passe par l'utilisateur (#1 Shell).
+        tools=(
+            READ_TOOLS + [write_file_tool, run_shell_tool]
+            if os.environ.get("CREW_SHELL_ENABLED")
+            else READ_TOOLS + [write_file_tool]
+        ),
         verbose=True,
         allow_delegation=True,
         max_iter=15,
@@ -639,6 +694,9 @@ def main():
     parser.add_argument("--project", "-p", required=True, help="Chemin du projet")
     parser.add_argument("--write", "-w", action="store_true",
                         help="Active l'écriture réelle de fichiers (sinon dry-run)")
+    parser.add_argument("--allow-shell", "-s", action="store_true",
+                        help="Donne au Coder l'outil run_shell (shell=False, allowlist stricte). "
+                             "OFF par defaut.")
     parser.add_argument("--deep", "-d", action="store_true",
                         help="Active le mode Scanner + Researcher pour les gros projets")
     parser.add_argument("--allow", "-a", action="append", default=[],
@@ -654,6 +712,8 @@ def main():
     os.environ["CREW_PROJECT"] = str(project_path)
     if args.write:
         os.environ["CREW_WRITE_ENABLED"] = "1"
+    if args.allow_shell:
+        os.environ["CREW_SHELL_ENABLED"] = "1"
 
     # Racines supplémentaires autorisées (--allow)
     extra_roots = []
@@ -677,17 +737,17 @@ def main():
     print()
     # Permissions actives — rendu explicite pour que l'utilisateur voie
     # exactement ce que les agents sont autorisés à faire.
-    # Limitation Phase 0 connue : `--write` pilote a la fois write_file ET
-    # les commandes shell destructives (amalgame historique). La separation
-    # en deux flags distincts est prevue dans le chantier #1 Shell.
     write_on = bool(args.write)
+    shell_on = bool(args.allow_shell)
     n_extra = len(extra_roots)
     roots_detail = f"projet + {n_extra} dossier(s) --allow" if n_extra else "projet uniquement"
     print("  Permissions actives :")
-    print(f"    - read         : ON  ({roots_detail})")
-    print(f"    - write_file   : {'ON ' if write_on else 'OFF'} (dry-run si OFF)")
-    print(f"    - run_shell    : ON  (disponible pour Coder uniquement)")
-    print(f"    - shell destr. : {'ON ' if write_on else 'OFF'} (lie a --write, dette Phase 0)")
+    print(f"    - read       : ON  ({roots_detail})")
+    print(f"    - write_file : {'ON ' if write_on else 'OFF'} (dry-run si OFF)")
+    if shell_on:
+        print(f"    - run_shell  : ON  (Coder uniquement, shell=False, allowlist stricte)")
+    else:
+        print(f"    - run_shell  : OFF (activer avec --allow-shell)")
     print()
 
     crew = build_crew(args.task, project_path, deep=args.deep)

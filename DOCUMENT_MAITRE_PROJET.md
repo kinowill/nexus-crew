@@ -817,6 +817,33 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 > (distinction repo modifié / prod alignée / validation réelle).
 > Les entrées les plus récentes sont en haut.
 
+### 2026-04-08 — Phase 0 / Shell durci (fin Phase 0)
+
+- **Scope** : `crew/crew.py` (`run_shell_tool`, `make_coder`, CLI), `nexus.bat`, `README.md`.
+- **Demande** : Phase 0 §1 — sécuriser réellement `run_shell_tool()`, le point le plus critique de l'audit.
+- **Changements** :
+  - `run_shell_tool` : passe de `shell=True` + blacklist à `shell=False` + **allowlist stricte** de binaires (`python`, `pytest`, `node`, `npm`, `pnpm`, `yarn`, `git`, `grep`, `rg`, `find`, `where`, `ls`, `cat`, `head`, `tail`, `cargo`, `go`, `make`, `echo`, etc.).
+  - Parsing via `shlex.split`, normalisation du binaire (basename + sans `.exe` + lowercase).
+  - Refus explicite des métacaractères shell : `|`, `;`, `&&`, `||`, `>`, `<`, `` ` ``, `$(`, `>>`, `<<`. Message clair à l'agent ("lance une seule commande à la fois").
+  - Nouveau flag CLI `--allow-shell` / `-s`, **OFF par défaut**. Sans ce flag, `run_shell_tool` n'est tout simplement pas ajouté aux tools du Coder → zéro shell possible.
+  - `make_coder` choisit ses tools dynamiquement selon `CREW_SHELL_ENABLED`.
+  - Bannière CLI mise à jour : `run_shell : ON / OFF` indépendant de `--write`.
+  - **Amalgame `--write` / shell dissous** : `--write` ne concerne plus que `write_file`. Dette Phase 0 §5 résolue.
+  - Suppression de la blacklist naïve (`rm`, `rmdir`, etc.) — l'allowlist la remplace intégralement.
+  - `nexus.bat` interactif : ajout de la question `Activer le shell des agents ? [o/N]`.
+  - `README.md` : table des flags à jour, section sécurité réécrite pour refléter le nouveau modèle.
+- **Fichiers touchés** : `crew/crew.py`, `nexus.bat`, `README.md`, `DOCUMENT_MAITRE_PROJET.md`.
+- **Repo modifié** : oui.
+- **Prod alignée** : N/A.
+- **Validation réelle** : non. Points à tester manuellement :
+  1. Sans `--allow-shell`, le Coder ne doit pas avoir `run_shell` dans ses tools (observable via verbose CrewAI ou en demandant à l'agent "quels tools as-tu ?").
+  2. Avec `--allow-shell`, une commande `git status` doit passer.
+  3. Avec `--allow-shell`, une commande `rm -rf foo` doit être refusée avec message "hors allowlist".
+  4. Avec `--allow-shell`, `git log | head` doit être refusé avec message "chainage non autorisé".
+  5. Avec `--allow-shell`, `python --version` doit passer.
+- **Commit** : à venir.
+- **Limites Phase 0 connues** : l'allowlist reste binaire (autorisé / pas autorisé). Pas encore de catégories fines (`git_read` vs `git_write` vs `package_install`). Une commande comme `git push` passe si shell est activé, sans gate supplémentaire. Le modèle de catégories §11 du doc maître reste à faire dans une phase ultérieure (hors Phase 0).
+
 ### 2026-04-08 — Phase 0 / Permissions : lisibilité
 
 - **Scope** : `crew/crew.py` — docstring module + bannière de démarrage CLI.

@@ -133,11 +133,13 @@ normalise les appels avant passage a LiteLLM.
 - Aucun `write_file` reel sans `--write`.
 - Tracing et telemetrie CrewAI forces OFF.
 
-Limite importante actuelle :
+`run_shell` (Phase 0 #1) :
 
-- `run_shell` reste trop permissif pour un outil pro.
-- La v1 devra passer d'un controle par blacklist a un vrai modele de
-  permissions/actions autorisees.
+- OFF par defaut, active explicitement avec `--allow-shell`.
+- `shell=False`, pas d'interpretation shell donc pas d'injection.
+- Allowlist stricte de binaires (python, pytest, git, npm, cargo, etc.).
+- Chainage et redirection shell (`|`, `;`, `&&`, `>`, etc.) refuses.
+- Toujours reserve au Coder (Critic est en lecture seule).
 
 ---
 
@@ -190,7 +192,8 @@ python crew/crew.py "ta tache" --project C:/chemin/projet [options]
 | Flag | Effet |
 |---|---|
 | `--project`, `-p` | Dossier de travail principal |
-| `--write`, `-w` | Active l'ecriture reelle |
+| `--write`, `-w` | Active l'ecriture reelle de fichiers |
+| `--allow-shell`, `-s` | Donne au Coder l'outil shell (shell=False, allowlist stricte) |
 | `--deep`, `-d` | Ajoute le Scanner |
 | `--allow`, `-a` | Dossier supplementaire accessible |
 
