@@ -33,3 +33,7 @@ desktop.ini
 # ── Logs et caches ─────────────────────────────────────────────
 *.log
 *.jsonl
+
+# ── Rapports locaux sensibles / traces de runs ─────────────────
+Audit Technique Complet du Projet NEXUS Crew - généré par *.txt
+Utilisation *.txt
