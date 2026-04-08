@@ -70,13 +70,16 @@ except Exception as _e:
     print(f"  [cache LiteLLM désactivé : {_e}]")
 
 # ─── Config embedder NVIDIA NIM (pour la mémoire CrewAI) ──────────────────────
-# Utilise le même endpoint que les LLM, avec un modèle d'embeddings gratuit.
+# Modèle retenu : nvidia/nv-embed-v1 (symétrique, OpenAI-compat sans champ extra).
+# Les modèles *nv-embedqa-* exigent input_type="query"/"passage", non-standard
+# OpenAI — CrewAI/chromadb ne l'envoient pas, donc ils crashent. Vérifié via
+# curl direct sur /v1/embeddings avant de committer.
 NVIDIA_EMBEDDER = {
     "provider": "openai",
     "config": {
         "api_key": API_KEY,
         "api_base": NVIDIA_BASE,
-        "model": "nvidia/nv-embedqa-e5-v5",
+        "model": "nvidia/nv-embed-v1",
     },
 }
 
