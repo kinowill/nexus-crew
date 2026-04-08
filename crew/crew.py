@@ -570,11 +570,14 @@ def build_crew(task_text: str, project_path: Path, deep: bool) -> Crew:
         tasks=tasks,
         process=Process.sequential,
         verbose=True,
-        memory=True,
-        embedder=NVIDIA_EMBEDDER,
         cache=True,
-        planning=True,
-        planning_llm=make_llm("architect"),
+        # memory=True et planning=True désactivés : tous deux cassent sur NVIDIA NIM.
+        #  - planning utilise un response_format/JSON schema non supporté
+        #    ("Invalid grammar request" sur DeepSeek, Qwen, etc.)
+        #  - memory injecte du contexte qui place un system message hors début
+        #    de conversation ("System message must be at the beginning" sur Qwen).
+        # La coordination passe par : context=[...] explicite + délégation entre
+        # agents + boucle rework. Suffisant pour le flow Researcher→...→Coder(rework).
     )
 
 
