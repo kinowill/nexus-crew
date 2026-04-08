@@ -28,7 +28,7 @@ echo.
 echo [ERREUR] Python + crewai introuvables.
 echo.
 echo Installe CrewAI dans un environnement isole (recommande) :
-echo     uv tool install crewai --with crewai-tools --with litellm
+echo     uv tool install crewai --with crewai-tools --with "litellm[caching]" --with httpx --with chromadb
 echo.
 echo Ou dans ton Python systeme :
 echo     pip install -r "%HERE%requirements.txt"

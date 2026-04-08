@@ -157,7 +157,7 @@ cp .env.example .env
 Option A - env isole :
 
 ```bash
-uv tool install crewai --with crewai-tools --with litellm
+uv tool install crewai --with crewai-tools --with 'litellm[caching]' --with httpx --with chromadb
 ```
 
 Option B - Python systeme :

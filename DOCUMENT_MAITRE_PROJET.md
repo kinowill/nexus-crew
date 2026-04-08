@@ -817,6 +817,23 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 > (distinction repo modifié / prod alignée / validation réelle).
 > Les entrées les plus récentes sont en haut.
 
+### 2026-04-08 — Phase 0 / Installation déterministe
+
+- **Scope** : `requirements.txt`, `README.md`, `nexus.bat`.
+- **Demande** : Phase 0 §3 — rendre l'installation déterministe, réconcilier les promesses runtime et l'environnement réellement installé.
+- **Diagnostic** :
+  - `httpx` utilisé par `scripts/test_connection.py` et `scripts/discover_models.py` mais absent de `requirements.txt`.
+  - `chromadb` listé dans `REQUIRED_IMPORTS` du test de santé mais absent de `requirements.txt` (dépendait du transitif CrewAI — fragile).
+  - Cause racine du `cache LiteLLM désactivé` observé dans le run du 8 avril : la commande alternative `uv tool install crewai --with crewai-tools --with litellm` n'incluait pas l'extra `[caching]`, donc `diskcache` n'était pas résolu dans l'env `uv tool`. `requirements.txt` était correct depuis le début, mais la voie `uv tool` (celle utilisée par l'auteur et recommandée en premier) ne l'était pas.
+- **Changements** :
+  - `requirements.txt` : ajout de `httpx>=0.27` et `chromadb>=0.5`.
+  - `README.md` et `nexus.bat` : commande `uv tool` corrigée pour inclure `litellm[caching]`, `httpx` et `chromadb`.
+- **Fichiers touchés** : `requirements.txt`, `README.md`, `nexus.bat`, `DOCUMENT_MAITRE_PROJET.md`.
+- **Repo modifié** : oui.
+- **Prod alignée** : N/A.
+- **Validation réelle** : non. À tester : réinstaller via la commande `uv tool` corrigée, puis lancer `python scripts/test_connection.py` (tous les imports doivent passer) et `python crew/crew.py "test" -p .` — le log doit afficher `[cache LiteLLM actif]` et non plus `[cache LiteLLM désactivé]`.
+- **Commit** : à venir.
+
 ### 2026-04-08 — Phase 0 / Incohérences doc-code
 
 - **Scope** : `nexus.bat`, `scripts/discover_models.py`.
