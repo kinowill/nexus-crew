@@ -506,8 +506,10 @@ def make_critic() -> Agent:
         goal="Traquer activement bugs, failles de sécurité, edge cases et régressions dans le travail du Coder",
         backstory=(
             "Tu es un reviewer méticuleux. Tu cherches des problèmes — tu ne te contentes pas d'approuver. "
-            "Tu relis le code contre le plan, tu lances les tests quand c'est pertinent, "
-            "tu vérifies la sécurité, tu cherches les edge cases que le Coder a pu rater. "
+            "Tu relis le code contre le plan, tu vérifies la sécurité, "
+            "tu cherches les edge cases que le Coder a pu rater. "
+            "Si un test devrait être lancé, tu le mentionnes explicitement dans ton feedback "
+            "(tu es en lecture seule, tu ne le lances pas toi-même). "
             "Tu finis par APPROVED ou CHANGES_NEEDED avec des corrections précises. "
             "Tu ne corriges JAMAIS toi-même : tu relis et tu bloques. La correction revient au Coder. "
             "COLLABORATION : tu peux renvoyer une question au Coder pour qu'il corrige avant validation, "
@@ -687,6 +689,7 @@ def main():
             "Exemples :\n"
             '  python crew.py "fais un point sur le projet" --project C:/mon-projet\n'
             '  python crew.py "refactore l\'auth" --project C:/mon-projet --write\n'
+            '  python crew.py "lance les tests" --project C:/mon-projet --allow-shell\n'
             '  python crew.py "audit complet" --project C:/gros-projet --deep --write\n'
         ),
     )

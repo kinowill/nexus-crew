@@ -817,6 +817,19 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 > (distinction repo modifié / prod alignée / validation réelle).
 > Les entrées les plus récentes sont en haut.
 
+### 2026-04-08 — Phase 0 / Relecture post-#1
+
+- **Scope** : `crew/crew.py` — résidus détectés lors de la relecture finale Phase 0.
+- **Changements** :
+  - Critic backstory : suppression du passage "tu lances les tests quand c'est pertinent" qui contredisait la lecture seule de #2. Remplacé par une consigne explicite de mentionner les tests nécessaires dans le feedback sans les lancer.
+  - Epilog CLI : ajout d'un exemple `--allow-shell`.
+  - Journal : dette `shlex.split` posix documentée.
+- **Fichiers touchés** : `crew/crew.py`, `DOCUMENT_MAITRE_PROJET.md`.
+- **Repo modifié** : oui.
+- **Prod alignée** : N/A.
+- **Validation réelle** : non.
+- **Commit** : à venir.
+
 ### 2026-04-08 — Phase 0 / Shell durci (fin Phase 0)
 
 - **Scope** : `crew/crew.py` (`run_shell_tool`, `make_coder`, CLI), `nexus.bat`, `README.md`.
@@ -842,7 +855,9 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
   4. Avec `--allow-shell`, `git log | head` doit être refusé avec message "chainage non autorisé".
   5. Avec `--allow-shell`, `python --version` doit passer.
 - **Commit** : `d4591d3` (poussé sur `origin/main`).
-- **Limites Phase 0 connues** : l'allowlist reste binaire (autorisé / pas autorisé). Pas encore de catégories fines (`git_read` vs `git_write` vs `package_install`). Une commande comme `git push` passe si shell est activé, sans gate supplémentaire. Le modèle de catégories §11 du doc maître reste à faire dans une phase ultérieure (hors Phase 0).
+- **Limites Phase 0 connues** :
+  - Allowlist binaire (autorisé / pas autorisé). Pas encore de catégories fines (`git_read` vs `git_write` vs `package_install`). Une commande comme `git push` passe si shell est activé, sans gate supplémentaire. Le modèle de catégories §11 du doc maître reste à faire dans une phase ultérieure.
+  - `shlex.split(..., posix=True)` mange les `\` des chemins Windows absolus (ex : `python C:\foo.py` devient `['python', 'C:foo.py']`). Le cas normal fonctionne (chemins relatifs au projet, forward slashes), mais les chemins Windows absolus dans une commande doivent utiliser `/` ou être quotés. Dette mineure, à ré-évaluer si gênante.
 
 ### 2026-04-08 — Phase 0 / Permissions : lisibilité
 
