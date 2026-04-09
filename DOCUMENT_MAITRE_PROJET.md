@@ -817,6 +817,33 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 > (distinction repo modifié / prod alignée / validation réelle).
 > Les entrées les plus récentes sont en haut.
 
+### 2026-04-09 — Phase 0 / Validation statique complète
+
+- **Scope** : ajout d'une suite de tests statiques couvrant les 5 chantiers Phase 0 + remise à niveau de l'environnement `uv tool`.
+- **Demande** : valider proprement Phase 0 avant d'ouvrir Phase 1, sans dépendre d'un run LLM réel (rate limits NIM).
+- **Changements code** :
+  - `scripts/test_phase0.py` : nouveau script de validation statique. 20 assertions sans appel réseau ni LLM.
+    - Imports : `httpx`, `chromadb`, `crewai`, `litellm`.
+    - Import de `crew.crew` (pose `CREW_PROJECT` et `CREW_SHELL_ENABLED` avant l'import).
+    - Shell durci : `rm -rf foo` refusé (allowlist), `git log | head` refusé (chainage), `git status` autorisé, `python --version` autorisé, commande vide refusée, `curl` refusé.
+    - Critic : pas de `write_file`, pas de `run_shell`, `read_file` présent.
+    - Coder : `run_shell` présent ssi `CREW_SHELL_ENABLED`, `write_file` toujours présent.
+    - Bannière : mentions `run_shell` et `write_file` dans le source.
+  - `test_phase0.bat` : raccourci Windows qui réutilise la détection Python de `nexus.bat` et lance le script.
+- **Découverte importante (dette cachée)** : l'environnement `uv tool` du poste tournait en `crewai 0.95.0` alors que `requirements.txt` réclame `>=1.14.0`. Le chantier Phase 0 §3 (install déterministe, commit `9770045`) avait corrigé `requirements.txt` mais l'env `uv tool` existant n'avait jamais été réinstallé. Tous les runs précédents s'appuyaient donc sur un env obsolète où `BaseLLM` n'existe pas (le code aurait crashé au premier vrai import si ça n'avait pas été masqué par un cache d'import quelconque).
+- **Action prise sur l'env (hors repo)** : `uv tool install "crewai>=1.14.0" --with crewai-tools --with "litellm[caching]" --with httpx --with chromadb --force`. Env passé en `crewai 1.14.1` + `litellm` présent + cache LiteLLM actif (vérifié au lancement du test : `[cache LiteLLM actif - session uniquement]`).
+- **Résultat tests** : `20/20` verts.
+- **Fichiers touchés** : `scripts/test_phase0.py` (nouveau), `test_phase0.bat` (nouveau), `DOCUMENT_MAITRE_PROJET.md` (cette entrée).
+- **Repo modifié** : oui.
+- **Prod alignée** : N/A (outil local).
+- **Validation réelle (statique)** : OUI — `python scripts/test_phase0.py` → 20/20.
+- **Validation réelle (runtime LLM)** : NON. Le test ne couvre pas le comportement réel des agents face à NIM (respect des contrats Critic/Coder en pratique, fallback chain, rate limits). Cette dette reste explicite jusqu'au premier run NIM exploitable.
+- **Dette résiduelle Phase 0 documentée** :
+  - Allowlist binaire seulement (pas de catégories `git_read` vs `git_write`). `git push` passe si shell activé.
+  - `shlex.split(posix=True)` mange les `\` des chemins Windows absolus dans une commande shell.
+  - **Nouvelle** : la cohérence de l'env `uv tool` n'est pas vérifiée automatiquement. Si `requirements.txt` change, il faut relancer manuellement `uv tool install ... --force`. À surveiller au prochain bump de dépendance.
+- **Commit** : à venir.
+
 ### 2026-04-08 — Phase 0 / Relecture post-#1
 
 - **Scope** : `crew/crew.py` — résidus détectés lors de la relecture finale Phase 0.
