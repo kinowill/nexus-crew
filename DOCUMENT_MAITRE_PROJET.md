@@ -730,7 +730,9 @@ Autrement dit :
 
 ### Phase 1 - Refactor protocole
 
+- **PRIORITÉ 0 (ajoutée 2026-04-09 après run réel)** : matrice tool use par modèle NIM. Le run de validation Phase 0 a montré que sur 6 réponses d'agents, 5 étaient des intentions vides parce que les modèles autres que Qwen 3.5 397B (DeepSeek V3.2, Qwen 3 Coder 480B, Kimi K2 Thinking) ne savent pas appeler des outils via le mécanisme CrewAI/LiteLLM. Sans corriger ça, les contrats de sortie ci-dessous rejetteraient 5 sorties sur 6 et le pipeline tournerait à vide. Tester chaque modèle, basculer Architect/Coder/Critic sur des modèles tool-use compatibles (Llama 3.3 70B, Qwen2.5 instruct, etc.) avant tout autre chantier Phase 1.
 - introduire des contrats de sortie par agent ;
+- ajouter validation des appels d'outils (si un agent est censé lire un fichier et n'a pas appelé `read_file`, c'est un échec) ;
 - introduire une couche de gouvernance ;
 - arrêter d'accepter les réponses invalides ;
 - séparer les modes `read`, `edit`, `review`, `debug`.
@@ -816,6 +818,44 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 > Trace des modifications apportées au projet, conformément au protocole
 > (distinction repo modifié / prod alignée / validation réelle).
 > Les entrées les plus récentes sont en haut.
+
+### 2026-04-09 — Phase 0 / Validation runtime + clôture + découverte critique tool use
+
+- **Scope** : exécution réelle de NEXUS sur AGENTIQUE lui-même pour valider Phase 0 en runtime, puis clôture officielle de Phase 0.
+- **Demande** : valider Phase 0 par un vrai run NIM (et non plus seulement par les tests statiques) avant d'attaquer Phase 1.
+- **Run effectué** :
+  - Commande : `python crew/crew.py "Explique en 3 lignes ce que fait ce projet (lis README.md)" --project .`
+  - Mode : NORMAL (4 agents), pas de `--write`, pas de `--allow-shell`, pas de `--deep`
+  - Durée : ~25 min (lent côté NIM, mais exit code 0)
+  - Pipeline : Researcher → Architect → Coder → Critic → Coder rework → Architect synthèse finale
+- **Ce qui est validé runtime (Phase 0)** :
+  - Bannière de permissions affichée correctement (`read: ON`, `write_file: OFF`, `run_shell: OFF`).
+  - **0 appel `write_file`** sur l'ensemble du run, malgré 2 invocations du Coder en dry-run.
+  - **0 appel `run_shell`** sur l'ensemble du run.
+  - 10 appels d'outils, **100 % en lecture** (`list_files`, `read_file`).
+  - Cache LiteLLM actif (vérifié au démarrage).
+  - Allowlist shell, Critic en lecture seule, Coder shell conditionnel : tous les chantiers Phase 0 se comportent en pratique comme en statique.
+  - Exit code 0.
+- **Découverte critique non Phase 0 — dette runtime majeure pour Phase 1** :
+  - Sur 6 réponses d'agents (Researcher + Architect + Coder + Critic + Coder rework + Architect synthèse), **seul le Researcher (Qwen 3.5 397B) a produit un livrable réel**. C'est un rapport structuré complet, ~1000 mots, qui a même détecté `scripts/test_phase0.py` créé en début de session.
+  - Les 5 autres réponses sont des **intentions vides** ("Je vais d'abord lire le fichier README.md...") qui violent explicitement §4.1, §8.1 et §12 du présent document.
+  - Plusieurs réponses contiennent des `<tool_call>` au format XML coupé qui n'ont jamais été parsés par CrewAI/LiteLLM. CrewAI a accepté ces sorties cassées comme "Final Answer" valides au lieu de les rejeter.
+  - **Cause racine probable** : tool use natif non supporté de manière fiable par DeepSeek V3.2 (Architect), Qwen 3 Coder 480B (Coder) et Kimi K2 Thinking (Critic) côté NIM. Ils tentent un format XML qui n'est pas reconnu, et CrewAI ne valide pas le contenu.
+  - **Résultat final affiché à l'utilisateur** : `"Je vais d'abord lire le fichier README.md pour comprendre le projet et produire un rapport final."` — exactement ce que §12 interdit comme "réponse d'intention au lieu d'un livrable".
+  - **Un warning CrewAI confirme l'instabilité** : `Event pairing mismatch. 'crew_kickoff_completed' closed 'llm_call_started'` — un appel LLM était encore en cours quand le crew s'est terminé.
+- **Implication directe pour Phase 1** :
+  - **Priorité 0 ajoutée à Phase 1** (à insérer avant les contrats de sortie §15 Phase 1) : **matrice tool use par modèle NIM**. Tester chaque modèle de chaque chaîne de fallback pour savoir lequel sait vraiment appeler des outils. Probablement basculer Architect/Coder/Critic vers Llama 3.3 70B ou Qwen2.5 instruct, qui sont annoncés comme tool-use compatibles par NIM.
+  - Sans cette priorité 0, les contrats de sortie de Phase 1 ne servent à rien : on rejetterait simplement 5 sorties sur 6, et le pipeline tournerait à vide.
+  - Les contrats de sortie restent nécessaires en plus, pour rejeter les "intentions" (sortie qui ne respecte pas le format demandé).
+  - **Validation des appels d'outils** : si un agent est censé lire un fichier et n'a appelé `read_file` 0 fois, c'est un échec, pas un succès. À ajouter aux contrats Phase 1.
+- **Fichiers touchés** : `DOCUMENT_MAITRE_PROJET.md` (cette entrée).
+- **Fichiers NON committés (volontairement ignorés)** : `run_phase0.log` (~1389 lignes, déjà ignoré par `*.log` du `.gitignore`).
+- **Repo modifié** : oui.
+- **Prod alignée** : N/A (outil local).
+- **Validation réelle (statique)** : OUI (entrée précédente, 20/20).
+- **Validation réelle (runtime LLM)** : OUI sur le périmètre Phase 0 (permissions, dry-run, bannière, allowlist). Le pipeline a tourné de bout en bout, exit code 0, et toutes les invariants Phase 0 sont respectés en pratique.
+- **Phase 0 — STATUT** : **CLÔTURÉE**. Code-complete + validée statiquement (20/20) + validée runtime sur le périmètre Phase 0. La dette tool use découverte n'est PAS une dette Phase 0 (les permissions sont respectées) — c'est une dette qualité produit qui devient priorité 0 de Phase 1.
+- **Commit** : à venir.
 
 ### 2026-04-09 — Phase 0 / Validation statique complète
 
