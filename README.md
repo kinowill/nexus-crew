@@ -1,5 +1,18 @@
 # AGENTIQUE / NEXUS Crew
 
+> ⚠️ **PROJET EN COURS DE DEVELOPPEMENT — PROTOTYPE EXPERIMENTAL**
+>
+> Ce repo n'est PAS un outil pret a l'emploi. C'est un terrain de R&D actif
+> pour valider une architecture multi-agent locale type Codex / Claude Code,
+> sur les modeles NVIDIA NIM gratuits. Les chantiers (fondations, integration
+> tool use, contrats de sortie, gouvernance multi-agent) sont en cours et
+> documentes phase par phase dans `DOCUMENT_MAITRE_PROJET.md`.
+>
+> Si tu cherches un outil de coding agent fonctionnel maintenant, regarde
+> Claude Code, Codex, Aider, Continue. Ce repo te servira surtout si tu veux
+> comprendre comment monter un systeme equivalent a partir de modeles
+> open-weights gratuits.
+
 Prototype d'assistant local de developpement base sur **CrewAI** et les
 modeles **NVIDIA NIM** gratuits.
 
@@ -13,10 +26,29 @@ contraintes de securite.
 
 ## Statut
 
-- Implementation actuelle : prototype multi-agent encore largement sequentiel.
-- Cible v1 : assistant local multi-agent cooperatif, supervise par protocole.
-- Priorite : qualite et fiabilite avant vitesse.
-- Reference architecture/produit : `DOCUMENT_MAITRE_PROJET.md`.
+**Etat global** : prototype, en developpement actif, NON utilisable en production.
+
+**Avancement par phase** (detail dans `DOCUMENT_MAITRE_PROJET.md` §15) :
+
+| Phase | Sujet | Etat |
+|---|---|---|
+| **Phase 0** | Hardening fondations (shell, permissions, install determ.) | ✅ CLOTUREE |
+| **Phase 1** | Refactor protocole + contrats de sortie | 🔄 EN COURS (§0 — debug integration tool use NIM) |
+| Phase 2 | Cooperation multi-agent reelle | ⏳ a venir |
+| Phase 3 | Intelligence depot lourd | ⏳ a venir |
+| Phase 4 | Qualite produit | ⏳ a venir |
+| Phase 5 | Vers autonomie plus elevee | ⏳ a venir |
+
+**Dette runtime connue (en cours de fix Phase 1 §0)** : sur certains modeles
+NIM (Qwen 3 Coder 480B, Kimi K2 Thinking, etc.), l'integration CrewAI ne
+declenche pas correctement le format `tool_calls` natif. Les agents
+Coder/Critic produisent alors des "intentions vides" ou du `<tool_call>` XML
+casse au lieu d'appeler reellement les outils. Cause racine identifiee
+(strict mode + params required avec defaults), fix en cours d'implementation.
+
+**Cible v1** : assistant local multi-agent cooperatif, supervise par
+protocole. Priorite qualite/fiabilite avant vitesse. Reference
+architecture/produit : `DOCUMENT_MAITRE_PROJET.md`.
 
 Le code actuel sert a valider les fondations, les contraintes NVIDIA NIM et la
 mechanique locale. Il ne faut pas le confondre avec la cible produit finale.
@@ -87,10 +119,14 @@ suivant prend le relais automatiquement.
 | Role | Primaire | Fallback 1 | Fallback 2 |
 |---|---|---|---|
 | Researcher | Qwen 3.5 397B | DeepSeek V3.2 | Llama 3.3 70B |
-| Architect | DeepSeek V3.2 | Qwen 3.5 397B | Llama 3.3 70B |
+| Architect | Qwen 3.5 397B | DeepSeek V3.2 | Llama 3.3 70B |
 | Coder | Qwen 3 Coder 480B | Devstral 2 123B | Kimi K2 Instruct |
 | Critic | Kimi K2 Thinking | Qwen 3 Next 80B Thinking | Nemotron Super 49B |
 | Scanner | Llama 3.3 70B | GPT-OSS 120B | Gemma 3 27B |
+
+> Les chaines sont calibrees a partir de la matrice tool use NIM
+> (`scripts/tool_use_matrix.md`) qui mesure la capacite reelle de chaque
+> modele a appeler des outils au format OpenAI standard.
 
 ---
 
@@ -228,10 +264,16 @@ AGENTIQUE/
 
 ## Limites connues
 
+- **Dette tool use NIM (en cours de fix Phase 1 §0)** : sur certains modeles
+  (Qwen 3 Coder 480B, Kimi K2 Thinking), CrewAI ne declenche pas
+  correctement le format `tool_calls` natif et les agents emettent du XML
+  Hermes casse au lieu d'appeler les outils. Cause racine identifiee
+  (interaction `strict mode` x params required avec defaults). Voir
+  `DOCUMENT_MAITRE_PROJET.md` §19 (journal Phase 1 §0).
 - Le prototype actuel reste trop sequentiel.
-- Les contrats de sortie des agents ne sont pas encore assez stricts.
-- Le shell n'est pas encore durci au niveau attendu pour un outil pro.
-- `planning` et `memory` CrewAI restent desactives sur NIM.
+- Les contrats de sortie des agents ne sont pas encore assez stricts
+  (Phase 1).
+- `planning` et `memory` CrewAI restent desactives sur NIM (incompat).
 - Les rate-limits NVIDIA NIM peuvent casser un run complet sur gros projet.
 
 ---
