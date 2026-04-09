@@ -730,7 +730,11 @@ Autrement dit :
 
 ### Phase 1 - Refactor protocole
 
-- **PRIORITÉ 0 (ajoutée 2026-04-09 après run réel)** : matrice tool use par modèle NIM. Le run de validation Phase 0 a montré que sur 6 réponses d'agents, 5 étaient des intentions vides parce que les modèles autres que Qwen 3.5 397B (DeepSeek V3.2, Qwen 3 Coder 480B, Kimi K2 Thinking) ne savent pas appeler des outils via le mécanisme CrewAI/LiteLLM. Sans corriger ça, les contrats de sortie ci-dessous rejetteraient 5 sorties sur 6 et le pipeline tournerait à vide. Tester chaque modèle, basculer Architect/Coder/Critic sur des modèles tool-use compatibles (Llama 3.3 70B, Qwen2.5 instruct, etc.) avant tout autre chantier Phase 1.
+- **PRIORITÉ 0 (ajoutée 2026-04-09 après run réel, MISE À JOUR le même jour)** :
+  - **0.a — Matrice tool use par modèle NIM** : ✅ FAIT (`scripts/test_tool_use.py`, résultats dans `scripts/tool_use_matrix.md`). 11 modèles testés, 9 NATIVE / 2 ERROR. Conclusion **inverse de l'hypothèse initiale** : Qwen 3 Coder 480B (Coder), Kimi K2 Thinking (Critic) et tous leurs fallbacks répondent NATIVEMENT au format `tool_calls` OpenAI au niveau brut litellm. Le bug "intentions vides" du run Phase 0 n'est donc PAS un problème de capacité modèle. Seuls DeepSeek V3.2 (timeout 60s) et Gemma 3 27B (incapable structurellement côté NIM) sont à exclure.
+  - **0.b — Swap chaîne `architect`** : DeepSeek V3.2 → fallback, Qwen 3.5 397B → primaire (DeepSeek timeout 100% du temps sur l'appel test).
+  - **0.c — Investigation `FallbackLLM` / intégration CrewAI** : trouver pourquoi des modèles qui marchent en appel direct litellm produisent des "intentions vides" via CrewAI. Pistes : prompt ReAct injecté par CrewAI qui contredit le format `tool_calls`, `LLM().call()` qui ne propage pas correctement `tools` quand wrappé dans un `BaseLLM` custom, ou normalisation système messages dans `FallbackLLM.call()` qui casse quelque chose.
+  - **0.d — Re-run NEXUS réel** après 0.b et 0.c, avec validation que les agents produisent du vrai output (pas des intentions).
 - introduire des contrats de sortie par agent ;
 - ajouter validation des appels d'outils (si un agent est censé lire un fichier et n'a pas appelé `read_file`, c'est un échec) ;
 - introduire une couche de gouvernance ;
@@ -818,6 +822,41 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 > Trace des modifications apportées au projet, conformément au protocole
 > (distinction repo modifié / prod alignée / validation réelle).
 > Les entrées les plus récentes sont en haut.
+
+### 2026-04-09 — Phase 1 §0.a / Matrice tool use NIM — hypothèse précédente invalidée
+
+- **Scope** : test systématique de chaque modèle NIM des `MODEL_CHAINS` pour mesurer leur capacité réelle à appeler un outil au format OpenAI `tool_calls`. Doit valider ou invalider l'hypothèse de l'entrée précédente (qui attribuait les "intentions vides" à une incapacité tool use des modèles Coder/Critic/Architect).
+- **Demande** : "matrice tool use par modèle NIM" — priorité 0 ajoutée à Phase 1 dans l'entrée précédente.
+- **Méthode** :
+  - Nouveau script `scripts/test_tool_use.py` : pour chaque modèle unique de `MODEL_CHAINS`, envoie un appel `litellm.completion` direct avec un outil simple `get_weather(city)` et un prompt qui demande explicitement de l'utiliser. Classe la réponse en NATIVE / TEXT / MALFORMED / ERROR.
+  - Le script parse `MODEL_CHAINS` par regex sur le source de `crew/crew.py` (pour ne pas avoir à importer `crew.crew` qui exige `CREW_PROJECT`).
+  - Run en séquentiel (pour rester poli sur le rate limit NIM), 11 modèles, ~3 min total.
+  - Sauvegarde markdown durable dans `scripts/tool_use_matrix.md`.
+- **Résultats** : `Total : 11 | NATIVE=9 | ERROR=2`.
+  - **NATIVE (9)** : Qwen 3.5 397B, Llama 3.3 70B, Qwen 3 Coder 480B, Devstral 2 123B, Kimi K2 instruct, Kimi K2 thinking, Qwen 3 next 80B thinking, Nemotron 49B, GPT-OSS 120B.
+  - **ERROR (2)** : DeepSeek V3.2 (`litellm.Timeout` 60s — lent côté NIM, pas une incapacité), Gemma 3 27B (`"auto" tool choice requires --enable-auto-tool-choice and --tool-call-parser to be set` — incapacité structurelle côté NIM).
+- **🔴 Découverte critique — INVALIDATION de l'hypothèse de l'entrée précédente** :
+  - L'entrée précédente (`8457f88`) affirmait : *"Cause racine probable : tool use natif non supporté de manière fiable par DeepSeek V3.2 (Architect), Qwen 3 Coder 480B (Coder) et Kimi K2 Thinking (Critic) côté NIM."*
+  - **C'est faux** pour Qwen 3 Coder 480B et Kimi K2 Thinking. Tous les deux répondent NATIVEMENT au format `tool_calls` OpenAI au niveau brut litellm.
+  - Toute la chaîne Coder est NATIVE x3. Toute la chaîne Critic est NATIVE x3.
+  - **Conclusion révisée** : le bug "intentions vides" du run de validation Phase 0 n'est PAS dû aux modèles. Il est dans la couche d'intégration entre CrewAI et notre `FallbackLLM` custom (`crew/crew.py:132-204`). Pistes à investiguer :
+    - Prompt ReAct injecté par CrewAI qui contredit le format `tool_calls` natif.
+    - `LLM().call()` de CrewAI qui ne propage pas correctement le paramètre `tools` quand l'instance est wrappée dans un `BaseLLM` custom.
+    - Normalisation des messages système dans `FallbackLLM.call()` qui casserait quelque chose (peu probable car affecte tous les agents et le Researcher marche).
+    - L'agent CrewAI passe peut-être ses tools custom (read_file, etc.) dans un format différent du format OpenAI standard testé ici.
+- **Seul changement chaîne nécessaire** : `architect` — DeepSeek V3.2 timeout 100% du temps sur l'appel test (60s), à basculer en fallback ; Qwen 3.5 397B en primaire. Aucun autre rôle ne nécessite de swap selon la matrice.
+- **Mise à jour §15 Phase 1** : la priorité 0 est éclatée en 4 sous-étapes (0.a matrice ✅, 0.b swap architect, 0.c investigation FallbackLLM, 0.d re-run réel).
+- **Fichiers créés (non encore commités)** :
+  - `scripts/test_tool_use.py` — script de test (~300 lignes, durable, à committer).
+  - `scripts/tool_use_matrix.md` — résultats (~65 lignes, à committer comme référence).
+  - `tool_use_run.log` — log du run (ignoré par `*.log`).
+- **Fichiers modifiés (non encore commités)** :
+  - `DOCUMENT_MAITRE_PROJET.md` (cette entrée + mise à jour §15 Phase 1 priorité 0).
+- **Repo modifié** : oui, mais aucun commit encore.
+- **Prod alignée** : N/A.
+- **Validation réelle** : OUI — la matrice est elle-même une validation (chaque modèle testé en conditions réelles avec un appel litellm complet, exit code 0, classification cohérente).
+- **État Phase 1** : §0.a fait, §0.b/0.c/0.d à faire.
+- **Commits** : `a68f234` (feat scripts — matrice + script) et le présent commit doc (à suivre).
 
 ### 2026-04-09 — Phase 0 / Validation runtime + clôture + découverte critique tool use
 
