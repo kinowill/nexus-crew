@@ -25,6 +25,7 @@ env/
 
 # ── Scripts utilitaires ponctuels (chemins locaux) ─────────────
 scripts/append_claude_md.py
+push.bat
 
 # ── Windows ────────────────────────────────────────────────────
 Thumbs.db
