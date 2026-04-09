@@ -855,7 +855,7 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 - **Validation réelle (statique)** : OUI (entrée précédente, 20/20).
 - **Validation réelle (runtime LLM)** : OUI sur le périmètre Phase 0 (permissions, dry-run, bannière, allowlist). Le pipeline a tourné de bout en bout, exit code 0, et toutes les invariants Phase 0 sont respectés en pratique.
 - **Phase 0 — STATUT** : **CLÔTURÉE**. Code-complete + validée statiquement (20/20) + validée runtime sur le périmètre Phase 0. La dette tool use découverte n'est PAS une dette Phase 0 (les permissions sont respectées) — c'est une dette qualité produit qui devient priorité 0 de Phase 1.
-- **Commit** : à venir.
+- **Commit** : `8457f88` (poussé sur `origin/main`).
 
 ### 2026-04-09 — Phase 0 / Validation statique complète
 
@@ -882,7 +882,7 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
   - Allowlist binaire seulement (pas de catégories `git_read` vs `git_write`). `git push` passe si shell activé.
   - `shlex.split(posix=True)` mange les `\` des chemins Windows absolus dans une commande shell.
   - **Nouvelle** : la cohérence de l'env `uv tool` n'est pas vérifiée automatiquement. Si `requirements.txt` change, il faut relancer manuellement `uv tool install ... --force`. À surveiller au prochain bump de dépendance.
-- **Commit** : à venir.
+- **Commit** : `28a121c` (poussé sur `origin/main`).
 
 ### 2026-04-08 — Phase 0 / Relecture post-#1
 
