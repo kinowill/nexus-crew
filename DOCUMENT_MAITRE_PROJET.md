@@ -732,9 +732,9 @@ Autrement dit :
 
 - **PRIORITÉ 0 (ajoutée 2026-04-09 après run réel, MISE À JOUR le même jour)** :
   - **0.a — Matrice tool use par modèle NIM** : ✅ FAIT (`scripts/test_tool_use.py`, résultats dans `scripts/tool_use_matrix.md`). 11 modèles testés, 9 NATIVE / 2 ERROR. Conclusion **inverse de l'hypothèse initiale** : Qwen 3 Coder 480B (Coder), Kimi K2 Thinking (Critic) et tous leurs fallbacks répondent NATIVEMENT au format `tool_calls` OpenAI au niveau brut litellm. Le bug "intentions vides" du run Phase 0 n'est donc PAS un problème de capacité modèle. Seuls DeepSeek V3.2 (timeout 60s) et Gemma 3 27B (incapable structurellement côté NIM) sont à exclure.
-  - **0.b — Swap chaîne `architect`** : DeepSeek V3.2 → fallback, Qwen 3.5 397B → primaire (DeepSeek timeout 100% du temps sur l'appel test).
-  - **0.c — Investigation `FallbackLLM` / intégration CrewAI** : trouver pourquoi des modèles qui marchent en appel direct litellm produisent des "intentions vides" via CrewAI. Pistes : prompt ReAct injecté par CrewAI qui contredit le format `tool_calls`, `LLM().call()` qui ne propage pas correctement `tools` quand wrappé dans un `BaseLLM` custom, ou normalisation système messages dans `FallbackLLM.call()` qui casse quelque chose.
-  - **0.d — Re-run NEXUS réel** après 0.b et 0.c, avec validation que les agents produisent du vrai output (pas des intentions).
+  - **0.b — Swap chaîne `architect`** : ✅ FAIT. DeepSeek V3.2 → fallback, Qwen 3.5 397B → primaire (DeepSeek timeout 100% du temps sur l'appel test).
+  - **0.c — Fix schemas tool use CrewAI → NIM** : ✅ FAIT. Cause racine : CrewAI met TOUS les params dans `required` (même ceux avec defaults Python). Qwen Coder et Kimi K2 basculent en XML Hermes cassé dès qu'ils voient `required: ["path", "offset", "limit"]`. Fix : `_strip_strict_tools()` dans `FallbackLLM.call()` retire `strict`, `additionalProperties`, et sort du `required` les params avec `default`. Validation directe : Qwen 3 Coder → `NATIVE: read_file({"path":"README.md"})` post-fix. Script de preuve : `scripts/test_crewai_schema.py`.
+  - **0.d — Re-run NEXUS réel** : 🔜 À faire. Valider que les agents produisent du vrai output (pas des intentions) avec le fix §0.c en place.
 - introduire des contrats de sortie par agent ;
 - ajouter validation des appels d'outils (si un agent est censé lire un fichier et n'a pas appelé `read_file`, c'est un échec) ;
 - introduire une couche de gouvernance ;
@@ -823,6 +823,117 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 > (distinction repo modifié / prod alignée / validation réelle).
 > Les entrées les plus récentes sont en haut.
 
+### 2026-04-10 — Phase 1 §0.b + §0.c / Swap architect + Fix schemas tool use CrewAI → NIM
+
+- **Scope** : `crew/crew.py` — swap chaîne architect (§0.b) + fix de la cause racine des "intentions vides" (§0.c).
+- **Demande** : avancer la priorité 0 de Phase 1 — rendre les agents capables de produire de vrais outputs au lieu d'intentions XML cassées.
+
+- **§0.b — Swap chaîne `architect`** : ✅ FAIT.
+  - `crew/crew.py` : DeepSeek V3.2 rétrogradé en fallback, Qwen 3.5 397B promu primaire. Llama 3.3 70B reste fallback final.
+  - Justification : DeepSeek timeout 60s sur l'appel test simple de la matrice.
+
+- **§0.c — Fix schemas tool use** : ✅ FAIT. Investigation complète + cause racine confirmée + fix appliqué.
+  - **Test de confirmation** (`scripts/test_crewai_schema.py`) : compare la réponse de Qwen 3 Coder 480B entre un schema simple (`get_weather`, 1 param required) et le schema réel CrewAI (`read_file`, 3 params ALL required). Résultat : SIMPLE=NATIVE, CREWAI REEL=MALFORMED (XML Hermes cassé). Le schema CrewAI casse le modèle.
+  - **Isolation de la variable** : 4 variantes testées en appel direct litellm. Le discriminant unique est `required` : dès que des params avec `default` Python sont dans `required`, Qwen Coder bascule en XML Hermes. Ni `strict:true`, ni `additionalProperties:false`, ni `title`, ni `default` dans le schema ne sont la cause isolément.
+  - **Cause racine** : `crewai/utilities/agent_utils.py:convert_tools_to_openai_schema()` met TOUS les params dans `required` (contrainte du mode `strict:true` OpenAI). Cela crée une contradiction que Qwen Coder et Kimi K2 résolvent en abandonnant le format tool_calls natif pour leur format XML Hermes préféré — qui n'est pas parsé par CrewAI, d'où les "intentions vides".
+  - **Fix** : `_strip_strict_tools()` (crew/crew.py, avant `FallbackLLM`) normalise les schemas avant envoi à NIM :
+    1. Retire `strict: true` de `function`
+    2. Retire `additionalProperties: false` de `parameters`
+    3. Sort du `required` les params qui ont un `default` dans le schema
+  - **Validation directe** : Qwen 3 Coder 480B avec le schema post-fix → `NATIVE: read_file({"path":"README.md"})`. Même modèle, même tool, le format change de MALFORMED à NATIVE.
+  - **Hypothèse 1 (`strict:true` seul) invalidée** : déjà invalidée session précédente par `scripts/test_tool_use_strict.py`. Confirmé ici : retirer strict sans toucher `required` ne suffit pas.
+
+- **Fichiers modifiés** :
+  - `crew/crew.py` : swap architect (§0.b) + ajout `_strip_strict_tools()` (§0.c).
+  - `.gitignore` : `scripts/*_payload.json` (session précédente, déjà modifié).
+  - `DOCUMENT_MAITRE_PROJET.md` : cette entrée + mise à jour §15.
+- **Fichiers créés** :
+  - `scripts/test_crewai_schema.py` : script de preuve §0.c (6 appels NIM, reproductible).
+  - `scripts/test_tool_use_strict.py` : script hypothèse 1 (session précédente, non encore commité).
+  - `scripts/inspect_crewai_payload.py` : interception payload (session précédente, non encore commité).
+- **Repo modifié** : oui.
+- **Prod alignée** : N/A.
+- **Validation réelle** : OUI pour le fix isolé (appel litellm direct post-fix → NATIVE). NON encore validé en run NEXUS complet (→ §0.d).
+- **Commit** : *(ce commit)*.
+
+### 2026-04-09 — README / Bandeau WIP + statut par phase + dette tool use connue
+
+- **Scope** : `README.md` — rendre explicite que le projet est un prototype expérimental, en développement actif, NON utilisable en production.
+- **Demande** : "modifie le readme pour bien montrer que le projet est en cours" — éviter qu'un visiteur croie que c'est un outil prêt à l'emploi.
+- **Changements** :
+  - Bandeau d'avertissement en tête de README (block quote `> ⚠️ PROJET EN COURS DE DEVELOPPEMENT`).
+  - Section "Statut" refondue : tableau d'avancement par phase (Phase 0 ✅ clôturée, Phase 1 🔄 en cours sur §0, Phases 2-5 ⏳).
+  - Mention explicite de la dette tool use NIM (cause racine identifiée, fix en cours).
+  - Mise à jour de la table fallback : Architect = Qwen 3.5 397B en primaire (suite au swap §0.b non encore commité, mais déjà décidé).
+  - Référence à `scripts/tool_use_matrix.md` pour la calibration des chaînes.
+  - "Limites connues" : ajout de la dette tool use NIM en tête de liste.
+- **Fichiers touchés** : `README.md` uniquement.
+- **Repo modifié** : oui.
+- **Prod alignée** : N/A.
+- **Validation réelle** : N/A (changement doc pur).
+- **Commit** : `a805cfd` (poussé sur `origin/main`).
+
+### 2026-04-09 — Phase 1 §0.b fait + §0.c en cours / Investigation FallbackLLM (NON COMMITÉ)
+
+> ⚠️ Cette entrée documente du travail **en cours, non commité**, pour qu'une éventuelle interruption de session ne perde pas le contexte. À mettre à jour ou éclater en plusieurs entrées au moment du commit.
+
+- **§0.b — Swap chaîne `architect`** : ✅ FAIT (non commité).
+  - `crew/crew.py` : DeepSeek V3.2 retrogradé en fallback, Qwen 3.5 397B promu primaire. Llama 3.3 70B reste fallback final.
+  - Justification : DeepSeek timeout 60s sur l'appel test simple de la matrice ; Qwen 3.5 397B est NATIVE et déjà éprouvé sur le rôle Researcher dans le run de validation Phase 0.
+  - Commentaire inline ajouté avec date et référence à `scripts/tool_use_matrix.md`.
+
+- **§0.c — Investigation `FallbackLLM` / intégration CrewAI** : 🔄 EN COURS.
+
+  **Données déjà recueillies (relecture de `run_phase0.log`)** :
+  - Le **Researcher (Qwen 3.5 397B)** appelle ses tools normalement : 12 appels `read_file`/`list_files` entre les lignes 61-527 du log, Final Answer riche (~1000 mots).
+  - **Tous les autres agents** (Architect, Coder, Critic, Coder rework, Architect synthèse) : **0 appel d'outil**, Final Answer = soit intention vide ("Je vais d'abord lire..."), soit `<tool_call>` XML cassé tronqué en plein milieu (ex: ligne 1162-1167 du log, format Hermes/Qwen XML : `<tool_call><function=read_file><parameter=path>README.md</parameter><parameter` — coupé).
+  - Pattern : ces modèles connaissent le format XML Hermes (formé dessus) et tentent de l'émettre, alors que CrewAI attend du `tool_calls` natif au format OpenAI.
+
+  **Mécanisme CrewAI compris (lecture source)** :
+  - `crew_agent_executor.py:462 _invoke_loop_native_tools()` appelle `convert_tools_to_openai_schema(self.original_tools)` puis passe `tools=openai_tools` à `get_llm_response`, qui forwarde vers `LLM.call()`.
+  - `crewai/utilities/agent_utils.py:144 convert_tools_to_openai_schema()` génère un schema avec **`"strict": True`** (ligne 207).
+  - `crewai/llm.py:609 _prepare_completion_params()` passe `"tools": tools` directement dans `litellm.completion(...)` sans transformation supplémentaire (ligne 655).
+
+  **Hypothèse 1 — `strict: true` casse certains modèles** : ⚠️ INVALIDÉE.
+  - Test isolé : `scripts/test_tool_use_strict.py` (créé, non commité). Re-teste 3 modèles avec un schema strict (additionalProperties:false + required complet + strict:true) sur le tool simple `get_weather(city)`.
+  - Résultats : Qwen 3 Coder 480B = NATIVE, Kimi K2 thinking = NATIVE, Qwen 3.5 397B = ERROR (timeout, non significatif — il marche en CrewAI).
+  - **Conclusion** : `strict: true` SEUL n'est PAS la cause. Les deux modèles "qui cassent en CrewAI" répondent NATIVEMENT en appel direct, même avec strict, sur un schema simple à 1 param.
+
+  **Hypothèse 2 — Inspection payload réel CrewAI** : 🔴 CAUSE RACINE TRÈS PROBABLE IDENTIFIÉE.
+  - Méthode : `scripts/inspect_crewai_payload.py` (créé, non commité). Monkey-patche `litellm.completion` AVANT tout import de crew, crée un Agent Coder réel via `make_coder()`, lance un mini-Crew avec une task qui force `read_file`, intercepte le 1er appel et dump les params dans `scripts/coder_payload.json`. **Coût NIM : zéro appel.**
+  - **🚨 Incident sécurité (résolu) lors du 1er run** : le dump initial contenait la clé `api_key` NIM en clair (champ standard kwargs litellm). Détecté immédiatement, fichier supprimé, JAMAIS commité (jamais tracké par git). Patch immédiat : `inspect_crewai_payload.py` REDACT maintenant `api_key` / `openai_api_key` / `nvidia_api_key` / etc. avant écriture. `.gitignore` mis à jour avec `scripts/coder_payload.json` et `scripts/*_payload.json` par sécurité. **La clé n'a jamais quitté le disque local.** À noter : l'utilisateur peut souhaiter rotater la clé NIM par précaution puisqu'elle a transité par un fichier sur disque même brièvement.
+  - **Findings du payload (dump propre, post-redact)** :
+    - **Tools** : 4 (read_file, list_files, grep, write_file), tous au format OpenAI standard avec `strict: true` et `additionalProperties: false` (cohérent avec source CrewAI lue).
+    - **🔴 Anomalie clé** : `read_file.parameters.required = ["path", "offset", "limit"]` alors que `offset` (default=0) et `limit` (default=40000) ont des valeurs par défaut Python. Idem pour `list_files.required = ["directory"]` (default="."), `grep.required = ["pattern", "glob"]` (default="*"). **Cause** : OpenAI strict mode exige que TOUS les champs soient dans `required` (c'est une contrainte du flag `strict: true`), donc CrewAI/Pydantic met tout, y compris les params à default. Pour les modèles, ça crée une contradiction visible : "tu DOIS fournir `offset`/`limit`" vs "ces params ont des defaults". Hypothèse forte : Qwen 3 Coder et Kimi K2 abandonnent le format `tool_calls` natif et tentent leur format XML Hermes qu'ils maîtrisent mieux. C'est exactement le `<tool_call><function=read_file><parameter=path>...` qu'on voit dans `run_phase0.log` ligne 1162.
+    - **Pourquoi le Researcher (Qwen 3.5 397B) n'est PAS affecté** : il est probablement plus "obéissant" au format OpenAI strict et accepte de fournir des valeurs même quand les params required ont l'air optionnels. Les modèles formés agressivement sur XML Hermes (Qwen Coder, Kimi K2) préfèrent leur format préféré et abandonnent le natif.
+    - **Anomalies secondaires non bloquantes** :
+      - System message dupliqué 3x dans le dump : artefact de `FallbackLLM.call()` qui fusionne les system messages à chaque retry CrewAI. À nettoyer mais pas critique.
+      - 3 user messages identiques : artefact des retries CrewAI quand l'agent ne produit pas de tool call valide.
+      - Pas de `tool_choice` envoyé (default `"auto"`). Pourrait être forcé à `"required"` pour la 1ère iter.
+
+  **Pistes de fix (à valider en §0.c suite)** :
+  1. **Override `convert_tools_to_openai_schema` pour passer `strict: false`** : retire la contrainte stricte, laisse les modèles utiliser le mode tool_calls "souple" (qui marche déjà chez beaucoup de serveurs vLLM). Coût : monkey-patch dans `crew/crew.py` au démarrage. Risque : casse possible sur d'autres providers.
+  2. **Retirer les `default` des args_schema des tools NEXUS** : force le modèle à toujours fournir une valeur, plus de contradiction. Plus propre mais demande de modifier les signatures pydantic des tools.
+  3. **Combinaison** : retirer les defaults ET garder strict:true. C'est ce qu'OpenAI recommande officiellement pour strict mode.
+
+  **Prochain pas (à valider)** : test isolé qui rejoue Qwen 3 Coder 480B + Kimi K2 thinking avec le **vrai schema CrewAI** (read_file complet, required=[path,offset,limit], strict:true). Si ça casse (NATIVE → MALFORMED) là où `get_weather` simple marchait, hypothèse 2 confirmée à 100% et on peut écrire le fix avec confiance.
+
+- **Fichiers créés/modifiés (non commités)** :
+  - `crew/crew.py` (modifié, §0.b) : swap chaîne architect.
+  - `scripts/test_tool_use_strict.py` (nouveau, §0.c hyp 1) : test isolé strict:true (hypothèse invalidée).
+  - `scripts/inspect_crewai_payload.py` (nouveau, §0.c hyp 2) : monkey-patch d'interception payload CrewAI, coût NIM zéro.
+  - `.gitignore` (modifié) : ajout `scripts/coder_payload.json` et `scripts/*_payload.json` (prévention fuite secrets).
+  - `DOCUMENT_MAITRE_PROJET.md` (modifié, cette entrée).
+- **Fichiers volontairement ignorés** : `scripts/coder_payload.json` (dump runtime, contient des champs sensibles même après redact, gitignored).
+
+- **Repo modifié** : oui.
+- **Prod alignée** : N/A.
+- **Validation réelle** :
+  - §0.b : non encore validé runtime (pas de re-run NEXUS depuis le swap).
+  - §0.c hypothèse 1 : OUI invalidée par appel litellm direct sur 3 modèles.
+- **État** : §0.b fait, §0.c en investigation active, §0.d (re-run NEXUS) en attente du fix de §0.c.
+- **Commit** : *(à venir, après plus d'avancée sur §0.c — ne pas committer §0.b seul, ça serait incomplet sans le fix d'intégration)*.
+
 ### 2026-04-09 — Phase 1 §0.a / Matrice tool use NIM — hypothèse précédente invalidée
 
 - **Scope** : test systématique de chaque modèle NIM des `MODEL_CHAINS` pour mesurer leur capacité réelle à appeler un outil au format OpenAI `tool_calls`. Doit valider ou invalider l'hypothèse de l'entrée précédente (qui attribuait les "intentions vides" à une incapacité tool use des modèles Coder/Critic/Architect).
@@ -856,7 +967,7 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 - **Prod alignée** : N/A.
 - **Validation réelle** : OUI — la matrice est elle-même une validation (chaque modèle testé en conditions réelles avec un appel litellm complet, exit code 0, classification cohérente).
 - **État Phase 1** : §0.a fait, §0.b/0.c/0.d à faire.
-- **Commits** : `a68f234` (feat scripts — matrice + script) et le présent commit doc (à suivre).
+- **Commits** : `a68f234` (feat scripts — matrice + script, poussé sur `origin/main`) et `01dc99c` (docs journal — invalidation hypothèse, poussé sur `origin/main`).
 
 ### 2026-04-09 — Phase 0 / Validation runtime + clôture + découverte critique tool use
 

@@ -107,8 +107,11 @@ MODEL_CHAINS = {
         "openai/meta/llama-3.3-70b-instruct",
     ],
     "architect": [
-        "openai/deepseek-ai/deepseek-v3.2",
+        # 2026-04-09 : Qwen 3.5 397B promu primaire après matrice tool use NIM
+        # (scripts/tool_use_matrix.md). DeepSeek V3.2 retrograde en fallback :
+        # timeout 60s sur l'appel test simple, instable cote NIM.
         "openai/qwen/qwen3.5-397b-a17b",
+        "openai/deepseek-ai/deepseek-v3.2",
         "openai/meta/llama-3.3-70b-instruct",
     ],
     "coder": [
@@ -127,6 +130,36 @@ MODEL_CHAINS = {
         "openai/google/gemma-3-27b-it",
     ],
 }
+
+
+def _strip_strict_tools(tools: list) -> list:
+    """Normalise les schemas d'outils CrewAI pour compatibilité NVIDIA NIM.
+
+    CrewAI génère des schemas avec strict:true, additionalProperties:false,
+    et TOUS les params dans required (même ceux avec default Python).
+    Certains modèles NIM (Qwen Coder, Kimi K2) basculent en XML Hermes cassé
+    quand required contient des params à default.
+
+    Fix : retire strict + additionalProperties, et sort du required les params
+    qui ont un "default" dans le schema. Confirmé par test_crewai_schema.py
+    (2026-04-10, Phase 1 §0.c) : required=["path"] → NATIVE, required=all → MALFORMED.
+    """
+    import copy
+    cleaned = copy.deepcopy(tools)
+    for t in cleaned:
+        if not isinstance(t, dict):
+            continue
+        func = t.get("function", {})
+        func.pop("strict", None)
+        params = func.get("parameters", {})
+        params.pop("additionalProperties", None)
+        # Retire du required les params qui ont un default dans le schema
+        props = params.get("properties", {})
+        required = params.get("required", [])
+        if required and props:
+            truly_required = [r for r in required if "default" not in props.get(r, {})]
+            params["required"] = truly_required
+    return cleaned
 
 
 class FallbackLLM(BaseLLM):
@@ -171,6 +204,16 @@ class FallbackLLM(BaseLLM):
                 messages = others
         # NIM ne supporte pas response_format/grammar structuré sur la plupart des modèles
         response_model = None
+
+        # --- Normalisation tools pour NVIDIA NIM (fix §0.c) ---
+        # CrewAI génère des schemas avec strict:true + additionalProperties:false +
+        # TOUS les params dans required (même ceux avec defaults Python).
+        # Certains modèles NIM (Qwen Coder, Kimi K2) abandonnent le format
+        # tool_calls natif et tentent du XML Hermes quand ils voient ce schema
+        # strict. On retire strict + additionalProperties pour laisser les modèles
+        # utiliser le tool calling "souple" qui marche chez tous.
+        if tools:
+            tools = _strip_strict_tools(tools)
 
         last_err = None
         for idx, llm in enumerate(self._llms):

@@ -27,6 +27,10 @@ env/
 scripts/append_claude_md.py
 push.bat
 
+# ── Dumps d'inspection runtime (peuvent contenir des secrets) ─
+scripts/coder_payload.json
+scripts/*_payload.json
+
 # ── Windows ────────────────────────────────────────────────────
 Thumbs.db
 desktop.ini
