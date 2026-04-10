@@ -64,6 +64,8 @@ from crewai import Agent, Task, Crew, LLM, BaseLLM, Process
 from crewai.tools import tool
 from pydantic import ConfigDict
 
+from contracts import ContractTracker
+
 # ─── Cache LiteLLM disk (scope = session courante uniquement) ─────────────────
 # Le cache est vidé à chaque démarrage pour éviter des réponses obsolètes
 # quand le code du projet a changé entre deux runs. Pendant la session, il
@@ -587,7 +589,8 @@ def make_scanner() -> Agent:
 
 # ─── Construction du crew ─────────────────────────────────────────────────────
 
-def build_crew(task_text: str, project_path: Path, deep: bool) -> Crew:
+def build_crew(task_text: str, project_path: Path, deep: bool,
+               tracker: ContractTracker | None = None) -> Crew:
     researcher = make_researcher()
     architect  = make_architect()
     coder      = make_coder()
@@ -699,12 +702,29 @@ def build_crew(task_text: str, project_path: Path, deep: bool) -> Crew:
         research_task.context = [scan_task]
         agents = [scanner] + agents
 
-    return Crew(
+    # -- Contract tracking (Phase 1) --
+    if tracker:
+        tracker.register(research_task.description, "research")
+        tracker.register(plan_task.description, "plan")
+        tracker.register(code_task.description, "code")
+        tracker.register(review_task.description, "review")
+        tracker.register(rework_task.description, "rework")
+        tracker.register(final_task.description, "final")
+        if deep:
+            tracker.register(scan_task.description, "scan")
+
+    crew_kwargs: dict = dict(
         agents=agents,
         tasks=tasks,
         process=Process.sequential,
         verbose=True,
         cache=True,
+    )
+    if tracker:
+        crew_kwargs["task_callback"] = tracker.on_task_done
+
+    return Crew(
+        **crew_kwargs,
         # memory=True et planning=True désactivés : tous deux cassent sur NVIDIA NIM.
         #  - planning utilise un response_format/JSON schema non supporté
         #    ("Invalid grammar request" sur DeepSeek, Qwen, etc.)
@@ -796,7 +816,8 @@ def main():
         print(f"    - run_shell  : OFF (activer avec --allow-shell)")
     print()
 
-    crew = build_crew(args.task, project_path, deep=args.deep)
+    tracker = ContractTracker()
+    crew = build_crew(args.task, project_path, deep=args.deep, tracker=tracker)
     result = crew.kickoff()
 
     print()
@@ -804,6 +825,10 @@ def main():
     print("RÉSULTAT FINAL")
     print("=" * 60)
     print(result)
+
+    # -- Contract validation report (Phase 1) --
+    print()
+    print(tracker.summary())
 
 
 if __name__ == "__main__":

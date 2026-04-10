@@ -735,10 +735,14 @@ Autrement dit :
   - **0.b — Swap chaîne `architect`** : ✅ FAIT. DeepSeek V3.2 → fallback, Qwen 3.5 397B → primaire (DeepSeek timeout 100% du temps sur l'appel test).
   - **0.c — Fix schemas tool use CrewAI → NIM** : ✅ FAIT. Cause racine : CrewAI met TOUS les params dans `required` (même ceux avec defaults Python). Qwen Coder et Kimi K2 basculent en XML Hermes cassé dès qu'ils voient `required: ["path", "offset", "limit"]`. Fix : `_strip_strict_tools()` dans `FallbackLLM.call()` retire `strict`, `additionalProperties`, et sort du `required` les params avec `default`. Validation directe : Qwen 3 Coder → `NATIVE: read_file({"path":"README.md"})` post-fix. Script de preuve : `scripts/test_crewai_schema.py`.
   - **0.d — Re-run NEXUS réel** : ✅ FAIT. Run complet exit code 0, 12 appels d'outils, 6/6 agents avec vrai livrable (vs 1/6 avant fix). Rapport final structuré en 5 sections. Zéro intention vide. **PRIORITÉ 0 CLÔTURÉE.**
-- introduire des contrats de sortie par agent ;
-- ajouter validation des appels d'outils (si un agent est censé lire un fichier et n'a pas appelé `read_file`, c'est un échec) ;
+- **§1 — Contrats de sortie + validation des appels d'outils** : ✅ FAIT (2026-04-10).
+  - Nouveau module `crew/contracts.py` : contrats par task (pas par rôle — un même agent peut jouer des rôles différents selon la task).
+  - 7 contrats définis : `research`, `plan`, `code`, `review`, `rework`, `final`, `scan`.
+  - Chaque contrat vérifie : appels d'outils requis, longueur minimale de l'output, patterns obligatoires (ex: Critic doit contenir APPROVED ou CHANGES_NEEDED).
+  - `ContractTracker` branché dans le Crew via `step_callback` (collecte les appels d'outils) + `task_callback` (valide le contrat après chaque task).
+  - Violations loguées en temps réel (`[CONTRAT VIOLE]`) + rapport de synthèse en fin de run.
+  - Pas de retry automatique sur violation (prévu Phase 2).
 - introduire une couche de gouvernance ;
-- arrêter d'accepter les réponses invalides ;
 - séparer les modes `read`, `edit`, `review`, `debug`.
 
 ### Phase 2 - Coopération multi-agent réelle
@@ -822,6 +826,25 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 > Trace des modifications apportées au projet, conformément au protocole
 > (distinction repo modifié / prod alignée / validation réelle).
 > Les entrées les plus récentes sont en haut.
+
+### 2026-04-10 — Phase 1 §1 / Contrats de sortie + validation des appels d'outils
+
+- **Scope** : nouveau module `crew/contracts.py` + branchement dans `crew/crew.py`.
+- **Demande** : Phase 1 suite — le système doit détecter quand un agent n'a pas rempli son contrat (pas d'outils appelés, output vide, verdict manquant).
+- **Design** :
+  - Contrats par **task** (pas par rôle). Un même agent (ex: Architect) peut exécuter la task `plan` (contrat strict : plan numéroté) et la task `final` (contrat souple : synthèse ≥ 100 chars). Le contrat est adapté à chaque task.
+  - 7 contrats : `research` (outils + ≥ 200 chars), `plan` (≥ 100 chars + pattern numéroté), `code` (read_file + ≥ 50 chars), `review` (read_file + APPROVED|CHANGES_NEEDED), `rework` (≥ 20 chars, pas d'exigence d'outil car conditionnel), `final` (≥ 100 chars), `scan` (list_files + ≥ 50 chars).
+  - `ContractTracker` : `on_step()` collecte les noms d'outils via `step_callback`, `on_task_done()` valide via `task_callback`.
+  - Violations loguées en temps réel + rapport de synthèse en fin de run.
+- **Fichiers créés** : `crew/contracts.py`.
+- **Fichiers modifiés** : `crew/crew.py` (import + tracker + callbacks + rapport final), `DOCUMENT_MAITRE_PROJET.md` (§15 + cette entrée).
+- **Tests** : validation unitaire en simulation (3 scénarios : agent valide → 0 violation, agent sans outils → 2 violations, Critic sans verdict → 1 violation). Tous OK.
+- **Repo modifié** : oui.
+- **Prod alignée** : N/A.
+- **Validation réelle** : OUI.
+  - Run #1 : a révélé que `step_callback` CrewAI ne capture PAS les tool calls natifs. Fix : extraction depuis `TaskOutput.messages`. Tests unitaires 4/4 OK post-fix.
+  - Run #2 (post-fix) : exit code 0, **2 violations détectées** (Critic : pas de read_file, pas de verdict APPROVED/CHANGES_NEEDED). Researcher, Coder, Architect = contrats respectés. Les violations sont de vraies violations (le Critic n'a pas agi), pas des faux positifs.
+- **Commit** : *(ce commit)*.
 
 ### 2026-04-10 — Phase 1 §0.d / Re-run NEXUS réel — validation runtime du fix §0.c — PRIORITÉ 0 CLÔTURÉE
 

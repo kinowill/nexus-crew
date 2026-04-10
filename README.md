@@ -33,7 +33,7 @@ contraintes de securite.
 | Phase | Sujet | Etat |
 |---|---|---|
 | **Phase 0** | Hardening fondations (shell, permissions, install determ.) | ✅ CLOTUREE |
-| **Phase 1** | Refactor protocole + contrats de sortie | 🔄 EN COURS (§0 — debug integration tool use NIM) |
+| **Phase 1** | Refactor protocole + contrats de sortie | 🔄 EN COURS (§0 ✅ tool use NIM, §1 ✅ contrats de sortie) |
 | Phase 2 | Cooperation multi-agent reelle | ⏳ a venir |
 | Phase 3 | Intelligence depot lourd | ⏳ a venir |
 | Phase 4 | Qualite produit | ⏳ a venir |
@@ -248,7 +248,9 @@ python crew/crew.py "adapte le pattern X de cette lib" -p C:/mon-app --allow C:/
 
 ```text
 AGENTIQUE/
-├── crew/crew.py             # Systeme multi-agents actuel
+├── crew/
+│   ├── crew.py              # Systeme multi-agents actuel
+│   └── contracts.py         # Contrats de sortie + validation (Phase 1 §1)
 ├── scripts/
 │   ├── test_connection.py   # Sante : API, modeles, deps
 │   └── discover_models.py   # Inventaire modele NIM
