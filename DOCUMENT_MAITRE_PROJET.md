@@ -734,7 +734,7 @@ Autrement dit :
   - **0.a — Matrice tool use par modèle NIM** : ✅ FAIT (`scripts/test_tool_use.py`, résultats dans `scripts/tool_use_matrix.md`). 11 modèles testés, 9 NATIVE / 2 ERROR. Conclusion **inverse de l'hypothèse initiale** : Qwen 3 Coder 480B (Coder), Kimi K2 Thinking (Critic) et tous leurs fallbacks répondent NATIVEMENT au format `tool_calls` OpenAI au niveau brut litellm. Le bug "intentions vides" du run Phase 0 n'est donc PAS un problème de capacité modèle. Seuls DeepSeek V3.2 (timeout 60s) et Gemma 3 27B (incapable structurellement côté NIM) sont à exclure.
   - **0.b — Swap chaîne `architect`** : ✅ FAIT. DeepSeek V3.2 → fallback, Qwen 3.5 397B → primaire (DeepSeek timeout 100% du temps sur l'appel test).
   - **0.c — Fix schemas tool use CrewAI → NIM** : ✅ FAIT. Cause racine : CrewAI met TOUS les params dans `required` (même ceux avec defaults Python). Qwen Coder et Kimi K2 basculent en XML Hermes cassé dès qu'ils voient `required: ["path", "offset", "limit"]`. Fix : `_strip_strict_tools()` dans `FallbackLLM.call()` retire `strict`, `additionalProperties`, et sort du `required` les params avec `default`. Validation directe : Qwen 3 Coder → `NATIVE: read_file({"path":"README.md"})` post-fix. Script de preuve : `scripts/test_crewai_schema.py`.
-  - **0.d — Re-run NEXUS réel** : 🔜 À faire. Valider que les agents produisent du vrai output (pas des intentions) avec le fix §0.c en place.
+  - **0.d — Re-run NEXUS réel** : ✅ FAIT. Run complet exit code 0, 12 appels d'outils, 6/6 agents avec vrai livrable (vs 1/6 avant fix). Rapport final structuré en 5 sections. Zéro intention vide. **PRIORITÉ 0 CLÔTURÉE.**
 - introduire des contrats de sortie par agent ;
 - ajouter validation des appels d'outils (si un agent est censé lire un fichier et n'a pas appelé `read_file`, c'est un échec) ;
 - introduire une couche de gouvernance ;
@@ -822,6 +822,32 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 > Trace des modifications apportées au projet, conformément au protocole
 > (distinction repo modifié / prod alignée / validation réelle).
 > Les entrées les plus récentes sont en haut.
+
+### 2026-04-10 — Phase 1 §0.d / Re-run NEXUS réel — validation runtime du fix §0.c — PRIORITÉ 0 CLÔTURÉE
+
+- **Scope** : run NEXUS complet sur AGENTIQUE pour valider le fix `_strip_strict_tools()` en conditions réelles.
+- **Demande** : §0.d — confirmer que les agents produisent de vrais outputs (pas des intentions vides) avec le fix §0.c.
+- **Commande** : `python crew/crew.py "Explique en 3 lignes ce que fait ce projet (lis README.md)" --project .`
+- **Mode** : NORMAL (4 agents), pas de `--write`, pas de `--allow-shell`.
+- **Résultat** : exit code 0, **succès complet**.
+  - **12 appels d'outils** (read_file, list_files) répartis sur plusieurs agents.
+  - **6/6 Final Answers avec vrai livrable** (vs 1/6 avant fix Phase 0).
+  - **0 intention vide**, **0 XML Hermes cassé**.
+  - **0 appel write_file**, **0 appel run_shell** (mode lecture respecté).
+  - Rapport final structuré : synthèse en 5 sections (ce qui a été fait, reviewé, état final, fichiers consultés, points d'attention).
+  - Le Coder a lu des fichiers et produit une synthèse réelle. Le Critic a fait une review. L'Architect a produit un rapport final consolidé.
+- **Comparaison avec le run Phase 0 (avant fix)** :
+  | Métrique | Phase 0 | §0.d |
+  |---|---|---|
+  | Appels d'outils | 10 (Researcher seul) | 12 (multi-agents) |
+  | Agents avec vrai livrable | 1/6 | **6/6** |
+  | Résultat final | intention vide | rapport structuré |
+- **Fichiers touchés** : `DOCUMENT_MAITRE_PROJET.md` (cette entrée + §15 mis à jour).
+- **Repo modifié** : oui.
+- **Prod alignée** : N/A.
+- **Validation réelle** : OUI — run NIM complet, exit code 0, 6/6 agents fonctionnels.
+- **PRIORITÉ 0 — STATUT** : **CLÔTURÉE**. §0.a ✅ §0.b ✅ §0.c ✅ §0.d ✅. La dette tool use NIM est résolue. Phase 1 peut maintenant avancer sur les contrats de sortie, la gouvernance et les modes d'usage.
+- **Commit** : *(ce commit)*.
 
 ### 2026-04-10 — Phase 1 §0.b + §0.c / Swap architect + Fix schemas tool use CrewAI → NIM
 
