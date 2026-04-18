@@ -827,6 +827,64 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 > (distinction repo modifié / prod alignée / validation réelle).
 > Les entrées les plus récentes sont en haut.
 
+### 2026-04-19 — Phase 1 §2 / Tentative de fix Critic + découverte intermittence tool use NIM (NON COMMITÉ, EN COURS)
+
+> ⚠️ Entrée documentant du travail **en cours, non commité**. À consolider ou éclater au moment du commit.
+
+- **Contexte** : le journal du 2026-04-10 (§1) notait que le Critic avait violé son contrat (pas de `read_file`, pas de `APPROVED`/`CHANGES_NEEDED`). Session d'aujourd'hui ouverte sur option A (protocole §8 après arbitrage utilisateur) pour corriger ça avant d'attaquer les modes d'usage (§9 MASTER).
+- **Modifications code (crew/crew.py)** :
+  - `review_task` description : resserrée avec obligations explicites (appeler `read_file`, finir par `VERDICT: APPROVED`/`CHANGES_NEEDED`) + format 3 sections imposé (`Fichiers relus:` / `Findings:` / `VERDICT:`).
+  - `make_critic()` backstory : renforcée (appelle TOUJOURS `read_file`, termine TOUJOURS par `VERDICT:`).
+- **Validation réelle — 3 runs consécutifs avec la même commande** :
+  `python crew/crew.py "Explique en 3 lignes ce que fait ce projet (lis README.md)" --project .` (sans `--write`, sans `--allow-shell`).
+
+  | Run | Prompt Critic | Researcher / Architect / Coder | Critic | Total violations |
+  |---|---|---|---|---|
+  | 1 | v1 (verdict simple) | 3/3 OK, 12 tool calls | `VERDICT: APPROVED` (18 chars) | **1** (length) |
+  | 2 | v2 (3 sections) | 0/3 → "intentions vides" | jamais joué utilement | 6 |
+  | 3 | v2 (inchangé) | 0/3 → "intentions vides" | jamais joué utilement | 5 |
+
+- **Découverte importante — la dette tool use NIM n'est pas réellement résolue** :
+  - Le journal §0.d (2026-04-10) annonçait "6/6 agents fonctionnels, PRIORITÉ 0 CLÔTURÉE".
+  - Run 1 de cette session a reproduit ce succès (tool calls propres, Critic lit README.md).
+  - Runs 2 & 3 (strictement le même code, cache vidé à chaque démarrage) ont tous les agents qui produisent des "Je vais explorer...", **zéro tool call**, outputs courts.
+  - **Conclusion** : le fix `_strip_strict_tools()` ne résout pas le problème de façon déterministe. Il est **intermittent**. La clôture de §0.d sur un seul run n'était pas suffisante pour valider le fix.
+- **Cause probable (hypothèses à valider)** :
+  - Rate limiting / throttling NVIDIA NIM free tier sur rafales d'appels consécutifs.
+  - Variance intrinsèque des modèles Qwen/Kimi (non-déterminisme, pas forcément lié au schema tool use).
+  - Effet combiné : à chaud, les modèles répondent correctement ; après N appels rapprochés, ils dégradent.
+- **Sur le fix Critic lui-même** :
+  - Prompt v1 : validé en run 1 (2 violations → 1 : `required_tools` ✅ et `required_patterns` ✅ passent, seule `min_output_length` échoue — le Critic compresse à "VERDICT: APPROVED" = 18 chars).
+  - Prompt v2 (3 sections) : non validable dans cette session car upstream cassé.
+- **Question utilisateur ouverte** : le dossier racine du projet a été déplacé (`Desktop/AGENTIQUE` → `C:/PROJETS/AGENTIQUE`). À investiguer si ça influence le comportement NIM. Points vérifiés :
+  - `.env` présent au nouveau chemin, `NVIDIA_API_KEY` chargée.
+  - `.crew_cache/cache.db` présent.
+  - Aucun path absolu en dur dans `crew/crew.py` ni dans `scripts/*.py` (chemins relatifs via `Path(__file__).parent.parent`).
+  - Conclusion provisoire : déplacement peu probable d'être la cause directe, mais à confirmer par un `test_connection.py` et éventuellement un redémarrage session fraîche.
+- **Fichiers modifiés** (non commité) : `crew/crew.py` (review_task description + Critic backstory).
+- **Fichiers créés** : `run_phase1_critic_fix.log` (écrasé à chaque run, contient le dernier).
+- **Repo modifié** : OUI.
+- **Prod alignée** : N/A.
+- **Validation réelle** : PARTIELLE. Run 1 prouve que le Critic respecte `required_tools` + `required_patterns` avec le prompt v1. Prompt v2 non validé.
+- **Prochaine étape à arbitrer** (options présentées à l'utilisateur) :
+  - **A.** Revenir au prompt v1 (validé), commit incrémental (2 violations → 1), accepter la violation `min_output_length` comme dette.
+  - **B.** Garder le prompt v2 (non validé), commit avec mention explicite "non validé runtime".
+  - **C.** Suspendre le chantier Critic, basculer sur l'investigation de l'intermittence tool use NIM (plus grave : remet en cause la clôture §0.d).
+- **Arbitrage utilisateur** : **C** retenu.
+- **Investigation §C — étape 1 (batch test NIM isolé)** :
+  - Nouveau script : `scripts/test_tool_use_batch.py`. Fire N appels séquentiels identiques à un modèle NIM avec le schéma CrewAI réel déjà normalisé par `_strip_strict_tools`. Classifie chaque réponse NATIVE/TEXT/MALFORMED/ERROR.
+  - Run 1 : `--role researcher --n 10 --sleep 0.5` → Qwen 3.5 397B → **10/10 NATIVE** en 195s. Aucune variance, aucun échec, aucune réponse texte, aucun XML cassé.
+  - **Conclusion étape 1** : Le fix `_strip_strict_tools` est **déterministe côté NIM** pour Qwen 3.5 397B. La cause des "intentions vides" observées en runs NEXUS 2 & 3 **n'est pas** la variance modèle NIM sur appels directs.
+  - **Hypothèse reformulée** : le bug intermittent est dans la **couche CrewAI / orchestration** — probablement l'un de :
+    - tours successifs (message history qui s'allonge et casse le format natif),
+    - délégation inter-agents (system messages additionnels injectés),
+    - context cross-task CrewAI (les `context=[...]` injectent-ils du contenu qui casse les appels ?),
+    - cache LiteLLM (réponses servies depuis cache dégradent ? peu probable, cache vidé au démarrage).
+- **Étape 2 prévue** : instrumenter `FallbackLLM.call()` pour logger, à chaque appel réel, la taille du payload, le nombre de messages, leur rôle, et si `tool_calls` natif ou non dans la réponse. Puis re-run NEXUS et analyser où ça casse.
+- **Environnement vérifié** : `scripts/test_connection.py` → 18/18 OK (API + 5 modèles + embedder + fichiers + deps). Déplacement du dossier racine `Desktop → C:/PROJETS` éliminé comme cause.
+- **Fichiers créés pendant l'investigation** : `scripts/test_tool_use_batch.py`, `run_batch_researcher.log`.
+- **Commit** : pas encore.
+
 ### 2026-04-10 — Phase 1 §1 / Contrats de sortie + validation des appels d'outils
 
 - **Scope** : nouveau module `crew/contracts.py` + branchement dans `crew/crew.py`.
