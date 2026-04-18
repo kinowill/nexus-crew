@@ -883,7 +883,23 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 - **Étape 2 prévue** : instrumenter `FallbackLLM.call()` pour logger, à chaque appel réel, la taille du payload, le nombre de messages, leur rôle, et si `tool_calls` natif ou non dans la réponse. Puis re-run NEXUS et analyser où ça casse.
 - **Environnement vérifié** : `scripts/test_connection.py` → 18/18 OK (API + 5 modèles + embedder + fichiers + deps). Déplacement du dossier racine `Desktop → C:/PROJETS` éliminé comme cause.
 - **Fichiers créés pendant l'investigation** : `scripts/test_tool_use_batch.py`, `run_batch_researcher.log`.
-- **Commit** : pas encore.
+- **Batch complémentaires** (mêmes hypothèses, autres rôles) :
+  - `--role coder --n 10` : Qwen 3 Coder 480B — 8/10 NATIVE, **2 ERROR 429** autour du 8e appel → rate limit NIM free tier atteint.
+  - `--role critic --n 10` : Kimi K2 Thinking — 9/10 NATIVE, **1 TEXT** (réponse nue sans `tool_calls`) → variance intrinsèque du modèle, pas du rate limit.
+- **Investigation §C — étape 2 (rate limit NIM)** :
+  - `scripts/test_rate_headers.py` : 1 appel direct `httpx.post` sur `/chat/completions`, dump de tous les headers de réponse.
+  - Résultat : NIM **n'expose AUCUN header de rate limit** (pas de `x-ratelimit-*`, pas de `retry-after`). Seuls `nvcf-reqid`, `nvcf-status` sont renvoyés.
+  - Conséquence : le code ne peut pas lire une limite restante en réponse. Il faut se rabattre sur : (a) doc officielle, (b) backoff défensif sur 429.
+  - WebSearch/WebFetch docs externes (free-llm.com, developer.nvidia.com) : **40 req/min** free tier, pas de cap journalier documenté publiquement, pas de différentiation par modèle documentée (mais expérimentalement Coder 480B semble plafonner plus tôt en bursts).
+- **Conclusions consolidées de la session 2026-04-19** :
+  - Qwen 3.5 397B (Researcher/Architect) : **déterministe** sur tool use avec le fix `_strip_strict_tools`.
+  - Qwen 3 Coder 480B (Coder) : déterministe tool use, **sensible au rate limit** (429 en rafale serrée).
+  - Kimi K2 Thinking (Critic) : **variance ~10 %** (1 réponse texte sur 10 à `sleep=0.5s`, sans 429) — c'est la source probable des "Critic sans read_file" observés en §1.
+  - Le bug "intentions vides" sur runs 2 & 3 est **multi-causal** : rate limit (Coder) + variance modèle (Kimi) + potentiel effet d'orchestration CrewAI à investiguer.
+- **Étape 3 prévue** : implémenter dans `FallbackLLM.call()` (a) un **backoff défensif 429** (ex: 1s / 2s / 4s puis fallback chain), (b) un **retry-1 sur 200 avec `tool_calls` vides** quand des tools ont été fournis (traite la variance Kimi), (c) logs payload/messages pour instrumenter l'hypothèse "tours successifs CrewAI".
+- **Fichiers créés** (consolidé) : `scripts/test_tool_use_batch.py` (déjà commité `f05fda4`), `scripts/test_rate_headers.py` (commit session), `run_batch_*.log` (gitignored).
+- **Fichiers modifiés non commités à la clôture de session** : `crew/crew.py` (prompt v2 Critic, non validé en runtime — à retravailler après le backoff/retry).
+- **Commit** : `f05fda4` (test_tool_use_batch) + `ffa4a7a` (journal intermédiaire) + *(commit de clôture : journal consolidé + test_rate_headers)*.
 
 ### 2026-04-10 — Phase 1 §1 / Contrats de sortie + validation des appels d'outils
 
