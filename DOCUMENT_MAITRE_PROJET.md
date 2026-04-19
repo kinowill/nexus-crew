@@ -833,6 +833,39 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 > (distinction repo modifié / prod alignée / validation réelle).
 > Les entrées les plus récentes sont en haut.
 
+### 2026-04-19 — Tentative Critic v2 (contrat 3 sections + VERDICT:) rollback / variance NIM 0-tools non couverte
+
+- **Scope** : `crew/crew.py` — modifications de `make_critic()` backstory + `review_task` description/expected_output pour imposer un format de sortie strict à 3 sections (`Fichiers relus:` / `Findings:` / `VERDICT: APPROVED|CHANGES_NEEDED`) et forcer l'appel de `read_file`.
+- **Motivation** : l'entrée « Observation runtime Phase 1 §3 » ci-dessous signalait 1 violation de contrat Critic (pattern `APPROVED|CHANGES_NEEDED` manquant). La v2 du prompt visait à corriger ça proprement côté instructions.
+- **Protocole de test** : après dépop du stash portant la v2, re-run NEXUS avec la même tâche qu'avant (`Explique en 3 lignes ce que fait ce projet (lis README.md)`, `NEXUS_DEBUG_LLM=1`), comparaison directe avec le run du commit `ea8fa3a`.
+- **Résultat observé (`run_critic_v2_debug.log`, gitignored)** :
+  | Métrique | Run HEAD (ea8fa3a) | Run v2 |
+  |---|---|---|
+  | Appels LLM tracés | 15 | **7** |
+  | Contrats violés | 1 (Critic) | **6** |
+  | Tool calls Researcher | 1 (`read_file` OK) | **0** |
+  | Taille output Researcher | ~1.5 KB structurée | **132 caractères** |
+  | Déclenchements 429 | 0 | 0 |
+  | Retries XML Hermes | 0 | **0** (aucun XML détecté) |
+- **Diagnostic** : l'échec n'est **pas causé par le changement Critic** (qui vient en aval). Le Researcher a produit une intention courte en **texte nu sans aucun appel d'outil, au tour 1**. Ce mode de défaillance est distinct des deux couverts par §3 :
+  - §3a (backoff 429) : rate limit n'a pas été atteint.
+  - §3b (retry XML Hermes) : `_output_looks_malformed` ne détecte que `<tool_call>` et `<function=` — une sortie texte plate sans balise échappe au filtre.
+  - **Nouveau mode de défaillance identifié** : variance NIM « 0 tools au tour 1 alors que des outils sont disponibles » (l'agent répond en texte narratif au lieu d'émettre un `tool_call`). Ce mode avait déjà été observé 2 fois en runs précédents (journal session 2026-04-19 runs 2 & 3) mais n'avait pas été isolé formellement.
+- **Décision** : **rollback de la v2 Critic** (revert de `crew/crew.py` à HEAD). Raisons :
+  1. La cause racine (variance 0-tools upstream) n'est pas dans le scope de la v2 et il n'est pas productif d'insister sur un prompt aval tant que l'amont casse ponctuellement.
+  2. Le run de test ne prouve ni n'infirme la qualité de la v2 — il a été bloqué en amont. Aucune donnée exploitable sur la v2 elle-même.
+  3. Mieux vaut consolider la session avec 3 commits solides (§1, §3, fix contracts) et documenter honnêtement la dette plutôt que commiter une v2 non validée.
+- **Dette assumée** : le pattern `APPROVED|CHANGES_NEEDED` du contrat Critic reste violé occasionnellement en runs (1 violation sur le run HEAD de référence). Acceptée jusqu'à traitement de la variance 0-tools upstream.
+- **Dette nouvelle identifiée** : variance NIM « 0 tools au tour 1 » non couverte par §3. Pistes pour session future :
+  - Extension de `_output_looks_malformed` avec heuristique « `had_tools` AND réponse < N chars AND contenu ressemble à une intention plutôt qu'à une réponse finale → retry-1 ».
+  - OU message système additionnel forçant explicitement l'appel d'outil au premier tour (risque : biais vers over-tooling).
+  - OU accepter et re-router via fallback chain dès qu'on détecte « output court sans tool_call alors que des tools sont disponibles ».
+- **Fichiers touchés** : `DOCUMENT_MAITRE_PROJET.md` (cette entrée). `crew/crew.py` reverté à HEAD, le diff v2 est perdu (pas re-stashé — il est reconstructible depuis ce journal au besoin).
+- **Repo modifié** : oui (journal uniquement).
+- **Prod alignée** : N/A.
+- **Validation réelle** : N/A (pas de changement de code).
+- **Commit** : *(ce commit)*.
+
 ### 2026-04-19 — Observation runtime Phase 1 §3 / Logs NEXUS_DEBUG_LLM sur run réel
 
 - **Scope** : run NEXUS complet avec `NEXUS_DEBUG_LLM=1` pour valider en conditions réelles la résilience NIM du commit `ea8fa3a`.
