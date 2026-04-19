@@ -833,6 +833,18 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 > (distinction repo modifié / prod alignée / validation réelle).
 > Les entrées les plus récentes sont en haut.
 
+### 2026-04-19 — Fix dette : résolution import `contracts` dans `scripts/test_phase0.py`
+
+- **Scope** : `scripts/test_phase0.py` — import preload de `contracts` via `importlib`.
+- **Contexte** : dette préexistante depuis Phase 1 §1 (commit `afe9eb36`, ajout de `crew/contracts.py`), signalée dans l'entrée Phase 1 §3. Le test Phase 0 ne tournait plus depuis, mais personne ne l'avait rejoué.
+- **Cause** : `crew/crew.py` fait `from contracts import ContractTracker` en import implicitement relatif (pas de `__init__.py` dans `crew/`). Quand `test_phase0.py` fait `from crew import crew` depuis la racine, Python ne trouve pas `contracts` car `sys.path` ne contient que `ROOT`.
+- **Fix** : preload de `contracts` dans `sys.modules` via `importlib.util` avant d'importer `crew.crew`, **sans** toucher `sys.path` (sinon `crew/crew.py` serait résolu comme module top-level `crew` et masquerait le namespace package `crew/`). Tentative intermédiaire (ajout `crew/` à `sys.path`) rejetée pour cette raison.
+- **Fichiers touchés** : `scripts/test_phase0.py`, `DOCUMENT_MAITRE_PROJET.md`.
+- **Repo modifié** : oui.
+- **Prod alignée** : N/A.
+- **Validation réelle** : OUI — `python scripts/test_phase0.py` → **20/20**.
+- **Commit** : *(ce commit)*.
+
 ### 2026-04-19 — Phase 1 §3 / Résilience NIM : backoff 429 + retry XML Hermes + logs debug
 
 - **Scope** : `crew/crew.py` — `FallbackLLM.call()` + 2 helpers + 1 constante.

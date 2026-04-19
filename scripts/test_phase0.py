@@ -20,6 +20,17 @@ from pathlib import Path
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
+# crew/crew.py fait `from contracts import ContractTracker` en import relatif
+# implicite (pas de __init__.py dans crew/). Depuis la racine via `from crew
+# import crew`, Python ne le trouve pas. On precharge le module `contracts`
+# dans sys.modules avant l'import, sans toucher sys.path (sinon crew.py masque
+# le namespace package crew/).
+import importlib.util as _ilu
+_spec = _ilu.spec_from_file_location("contracts", ROOT / "crew" / "contracts.py")
+_mod = _ilu.module_from_spec(_spec)
+sys.modules["contracts"] = _mod
+_spec.loader.exec_module(_mod)
+
 # Active le shell AVANT d'importer crew.py : make_coder lit la variable
 # au moment de la construction de ses tools.
 os.environ["CREW_SHELL_ENABLED"] = "1"
