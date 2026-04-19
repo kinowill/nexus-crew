@@ -742,6 +742,12 @@ Autrement dit :
   - `ContractTracker` branché dans le Crew via `step_callback` (collecte les appels d'outils) + `task_callback` (valide le contrat après chaque task).
   - Violations loguées en temps réel (`[CONTRAT VIOLE]`) + rapport de synthèse en fin de run.
   - Pas de retry automatique sur violation (prévu Phase 2).
+- **§3 — Résilience NIM : backoff 429 + retry XML Hermes + logs debug** : ✅ FAIT au niveau logique (2026-04-19).
+  - `RATE_LIMIT_BACKOFFS = [1.0, 2.0, 4.0]` : 3 retries sur le même modèle avant fallback chain sur 429.
+  - `_is_rate_limit_error()` + `_output_looks_malformed()` ajoutés.
+  - Retry-1 sur sortie XML Hermes quand des tools ont été fournis (traite variance Kimi K2 ~10 %).
+  - Logs opt-in via `NEXUS_DEBUG_LLM=1` (model / rl_try / msgs / bytes / tools / roles).
+  - Validation : 6 mock tests + 13 unit tests OK. **Runtime NIM réel non encore observé**, prévu dans une session instrumentée dédiée.
 - introduire une couche de gouvernance ;
 - séparer les modes `read`, `edit`, `review`, `debug`.
 
@@ -826,6 +832,44 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 > Trace des modifications apportées au projet, conformément au protocole
 > (distinction repo modifié / prod alignée / validation réelle).
 > Les entrées les plus récentes sont en haut.
+
+### 2026-04-19 — Phase 1 §3 / Résilience NIM : backoff 429 + retry XML Hermes + logs debug
+
+- **Scope** : `crew/crew.py` — `FallbackLLM.call()` + 2 helpers + 1 constante.
+- **Demande** : étape 3 prévue au plan de fin de session §C (entrée précédente) pour traiter les 3 causes documentées d'« intentions vides » en run NEXUS.
+- **Diagnostic rappelé (journal 2026-04-19 bloc précédent)** :
+  - Coder 480B subit des 429 en rafales serrées (free tier ~40 req/min, pas de header `retry-after` côté NIM).
+  - Kimi K2 Thinking a ~10 % de réponses texte sans `tool_calls` quand des tools sont fournis (variance intrinsèque, pas du rate limit).
+  - Qwen 3.5 397B est déterministe.
+- **Changements** :
+  - Nouvelle constante `RATE_LIMIT_BACKOFFS = [1.0, 2.0, 4.0]` : 3 tentatives supplémentaires avec attentes 1s/2s/4s avant de basculer au modèle suivant de la chaîne.
+  - Nouveau helper `_is_rate_limit_error(err)` : détecte les 429 par nom de classe (`*RateLimit*`) ou par message (`429`, `rate limit`, `too many requests`).
+  - Nouveau helper `_output_looks_malformed(out, had_tools)` : détecte XML Hermes (`<tool_call>` ou `<function=`) uniquement si des tools ont été fournis.
+  - Réécriture de la boucle `FallbackLLM.call()` :
+    - **3a** — sur exception détectée comme 429, attendre et retry sur le *même* modèle (3 retries max). Les erreurs non-429 (timeout, autre) basculent direct sur le fallback comme avant.
+    - **3b** — si la sortie contient du XML Hermes et que des tools étaient fournis, retry-1 sur le même modèle. Si le 2e output est encore malformed, il est retourné tel quel (retry-1 consommé, pas de fallback automatique) — **choix documenté** : la littéralité "retry-1" du plan. Le fallback vers un autre modèle en cas de malformed persistant est une amélioration possible, non retenue ici pour ne pas gonfler le scope.
+    - **3c** — logs opt-in via `NEXUS_DEBUG_LLM=1` : à chaque appel réel (y compris retries) dump `model / rl_try / msgs / bytes / tools / roles`. But déclaré : instrumenter l'hypothèse "tours successifs CrewAI" pour une session ultérieure.
+- **Fichiers modifiés** : `crew/crew.py`, `DOCUMENT_MAITRE_PROJET.md` (cette entrée).
+- **Stash géré en amont** : `git stash push crew/crew.py -m "WIP v2 Critic prompt (non valide runtime)"` avant implémentation, pour isoler le diff v2 Critic (prompt review non validé runtime, entrée précédente). Le stash est resté en place après le commit pour la prochaine itération Critic. **À retravailler dans une session dédiée**, pas pendant l'étape 3.
+- **Repo modifié** : oui.
+- **Prod alignée** : N/A.
+- **Validation réelle** :
+  - **OUI pour la logique** — 6 mock tests sur `FallbackLLM.call()` avec un `FakeLLM` (séquences programmées) + patch `RATE_LIMIT_BACKOFFS` à 0.01s pour tests rapides. Cas couverts :
+    1. 429 transient → backoff + retry même modèle → 2 appels, succès au 2e.
+    2. 429 persistant (4 échecs) → épuise les 3 retries puis fallback → A=4 tries, B=1.
+    3. XML Hermes avec tools → retry-1 même modèle → succès au 2e.
+    4. Malformed 2x → retry-1 consommé, 2e output retourné tel quel (pas de fallback).
+    5. XML dans output **sans** tools fournis → pas de retry (correct : les tools n'étaient pas attendus).
+    6. Timeout (non-429) → fallback direct, pas de backoff (correct : non-429 = sortie immédiate de la boucle).
+  - **OUI pour les helpers** — 13 unit tests sur `_is_rate_limit_error` (6 cas) et `_output_looks_malformed` (6 cas) + vérification de la constante.
+  - **OUI pour la syntaxe** — `python -m py_compile crew/crew.py` passe.
+  - **NON encore pour le runtime NIM réel** — il faut un run NEXUS pour observer le backoff se déclencher sur de vrais 429 Coder 480B et le retry-1 sur de vrais malformed Kimi K2. Ça consomme du quota NIM et dépend de la variance. À lancer avec `NEXUS_DEBUG_LLM=1` dans une session dédiée (objet : vérifier que les logs tracent correctement la cause d'une éventuelle intention vide résiduelle).
+- **Dette découverte hors scope** : `scripts/test_phase0.py` échoue à l'import de `crew.crew` depuis la racine (`from contracts import ContractTracker` à la ligne 68 de `crew/crew.py` n'est pas résolvable depuis `sys.path = ROOT`). Ce bug est silencieusement présent depuis le commit `afe9eb36` (Phase 1 §1, ajout de `contracts.py`) et n'avait pas été rejoué depuis. Non corrigé dans ce commit — à traiter dans un commit dédié (`test(phase0): fix resolution import contracts`).
+- **Prochaine étape prévue** :
+  1. Run NEXUS instrumenté (`NEXUS_DEBUG_LLM=1`) sur une tâche de taille modérée pour collecter des logs réels et valider que la résilience se déclenche.
+  2. Fix import `test_phase0.py` (commit séparé).
+  3. Itération Critic : pop du stash, retravailler le prompt v2 Critic (qui n'avait pas été validable en session précédente à cause des intentions vides upstream — maintenant qu'on a backoff+retry, une nouvelle tentative est possible).
+- **Commit** : *(ce commit)*.
 
 ### 2026-04-19 — Phase 1 §2 / Tentative de fix Critic + découverte intermittence tool use NIM (NON COMMITÉ, EN COURS)
 

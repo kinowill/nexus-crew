@@ -30,6 +30,7 @@ import argparse
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 # ─── Chargement .env ──────────────────────────────────────────────────────────
@@ -164,6 +165,35 @@ def _strip_strict_tools(tools: list) -> list:
     return cleaned
 
 
+# Phase 1 §3 — Resilience NIM : backoff 429 + retry sur sortie XML Hermes cassee.
+# Mesure contre : rate limit NIM free tier (~40 req/min, Coder 480B cap plus tot
+# en bursts) et variance intrinseque Kimi K2 Thinking (~10% de reponses texte
+# sans tool_calls quand des tools sont fournis). Voir journal 2026-04-19.
+RATE_LIMIT_BACKOFFS = [1.0, 2.0, 4.0]  # attentes apres 429 avant fallback chain
+
+
+def _is_rate_limit_error(err: Exception) -> bool:
+    """Detecte 429 / rate limit via nom de classe ou message."""
+    tname = type(err).__name__.lower()
+    if "ratelimit" in tname:
+        return True
+    msg = str(err).lower()
+    return "429" in msg or "rate limit" in msg or "too many requests" in msg
+
+
+def _output_looks_malformed(out, had_tools: bool) -> bool:
+    """Detecte une sortie XML Hermes cassee quand des tools etaient fournis.
+
+    Symptome observe (Qwen Coder, Kimi K2) : le modele emet <tool_call>... ou
+    <function=... au lieu du format tool_calls natif OpenAI. CrewAI ne parse
+    pas ce format et retourne le XML brut comme "Final Answer", d'ou les
+    "intentions vides" vues en run NEXUS 2 & 3 du 2026-04-19.
+    """
+    if not had_tools or not isinstance(out, str):
+        return False
+    return "<tool_call>" in out or "<function=" in out
+
+
 class FallbackLLM(BaseLLM):
     """LLM CrewAI qui cascade sur une liste de modèles en cas d'erreur.
 
@@ -217,25 +247,65 @@ class FallbackLLM(BaseLLM):
         if tools:
             tools = _strip_strict_tools(tools)
 
+        # Phase 1 §3 — Resilience NIM.
+        # (a) Backoff 429 sur le meme modele avant fallback chain.
+        # (b) Retry-1 si la reponse est XML Hermes (tools fournis mais pas parses).
+        # (c) Logs payload opt-in via NEXUS_DEBUG_LLM=1.
+        debug = os.environ.get("NEXUS_DEBUG_LLM") == "1"
+        had_tools = bool(tools)
         last_err = None
+
         for idx, llm in enumerate(self._llms):
-            try:
-                out = llm.call(
-                    messages=messages,
-                    tools=tools,
-                    callbacks=callbacks,
-                    available_functions=available_functions,
-                    from_task=from_task,
-                    from_agent=from_agent,
-                    response_model=response_model,
-                )
+            model_name = self._chain[idx]
+            rl_attempts = 0
+            malformed_retry_used = False
+
+            while True:
+                if debug:
+                    if isinstance(messages, list):
+                        nmsgs = len(messages)
+                        nbytes = sum(len(str(m.get("content", ""))) for m in messages)
+                        roles = ",".join(m.get("role", "?") for m in messages)
+                    else:
+                        nmsgs, nbytes, roles = 1, len(str(messages)), "?"
+                    print(f"  [LLM] model={model_name} rl_try={rl_attempts} "
+                          f"msgs={nmsgs} bytes={nbytes} tools={len(tools) if tools else 0} "
+                          f"roles=[{roles}]")
+                try:
+                    out = llm.call(
+                        messages=messages,
+                        tools=tools,
+                        callbacks=callbacks,
+                        available_functions=available_functions,
+                        from_task=from_task,
+                        from_agent=from_agent,
+                        response_model=response_model,
+                    )
+                except Exception as e:
+                    last_err = e
+                    if _is_rate_limit_error(e) and rl_attempts < len(RATE_LIMIT_BACKOFFS):
+                        wait = RATE_LIMIT_BACKOFFS[rl_attempts]
+                        rl_attempts += 1
+                        print(f"  [429 {model_name} : backoff {wait}s, "
+                              f"retry {rl_attempts}/{len(RATE_LIMIT_BACKOFFS)}]")
+                        time.sleep(wait)
+                        continue
+                    print(f"  [modèle {model_name} a échoué : {str(e)[:100]}]")
+                    break  # passe au LLM suivant de la chaine
+
+                # (b) 1 retry sur meme modele si sortie XML Hermes cassee
+                if _output_looks_malformed(out, had_tools) and not malformed_retry_used:
+                    malformed_retry_used = True
+                    print(f"  [sortie XML Hermes {model_name} : retry-1 sur meme modele]")
+                    continue
+
                 if idx > 0:
-                    print(f"  [fallback actif : {self._chain[idx]}]")
+                    print(f"  [fallback actif : {model_name}]")
+                if debug and (malformed_retry_used or rl_attempts > 0):
+                    print(f"  [LLM] {model_name} OK apres "
+                          f"rl_retries={rl_attempts} malformed_retry={malformed_retry_used}")
                 return out
-            except Exception as e:
-                last_err = e
-                print(f"  [modèle {self._chain[idx]} a échoué : {str(e)[:100]}]")
-                continue
+
         raise RuntimeError(f"Tous les fallbacks ont échoué pour {self._chain[0]} : {last_err}")
 
     def supports_function_calling(self) -> bool:
