@@ -833,6 +833,33 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 > (distinction repo modifié / prod alignée / validation réelle).
 > Les entrées les plus récentes sont en haut.
 
+### 2026-04-19 — Observation runtime Phase 1 §3 / Logs NEXUS_DEBUG_LLM sur run réel
+
+- **Scope** : run NEXUS complet avec `NEXUS_DEBUG_LLM=1` pour valider en conditions réelles la résilience NIM du commit `ea8fa3a`.
+- **Commande** : `NEXUS_DEBUG_LLM=1 python crew/crew.py "Explique en 3 lignes ce que fait ce projet (lis README.md)" --project .`
+- **Résultat** : exit 0, run complet, synthèse finale structurée en 5 sections.
+- **Mesures collectées dans `run_phase1_3_debug.log`** (gitignored) :
+  | Métrique | Valeur |
+  |---|---|
+  | Appels LLM tracés | 15 |
+  | Déclenchements 429 (`[429 ... : backoff]`) | 0 |
+  | Retries XML Hermes (`[sortie XML Hermes ... : retry-1]`) | 0 |
+  | Fallbacks actifs | 0 |
+  | Contrats violés | 1 (Critic, sans APPROVED/CHANGES_NEEDED — prompt v1 de HEAD, v2 toujours stashé) |
+- **Validation runtime partielle** :
+  - ✅ **3c (logs debug)** : confirmé en conditions réelles. Format `model / rl_try / msgs / bytes / tools / roles` lisible et exploitable.
+  - ⏳ **3a (backoff 429)** et **3b (retry XML Hermes)** : câblés mais **non déclenchés** — le run était suffisamment court et le rate limit n'a pas été atteint, Kimi K2 n'a pas variance-dérapé cette fois. Les conditions de reproduction ne sont pas fiables à la demande. Validation runtime complète reportée à une session où une de ces conditions se produit naturellement.
+- **Donnée quantitative importante pour l'hypothèse "tours successifs CrewAI"** (journal 2026-04-19 précédent) :
+  - **Researcher (Qwen 3.5 397B)** : 6 tours ReAct, `msgs` passe de 2 → 5 → 8 → 11 → 14, **`bytes` 1134 → 50655 (×44)** en 5 tours.
+  - **Coder (Qwen 3 Coder 480B)** : 3 tours, msgs 2 → 10, bytes 4092 → 19621 (×4.8).
+  - **Critic (Kimi K2 Thinking)** : 4 tours, msgs 2 → 13, bytes 4734 → 13458 (×2.8). La variable `tools` passe de 5 à 3 au dernier tour (probable délégation CrewAI qui retire certains outils).
+  - **Interprétation** : l'hypothèse est **confirmée quantitativement**. Le payload CrewAI explose tour après tour. Un modèle qui tient bien au tour 1 peut dégrader au tour 5 simplement parce que la message history est devenue énorme. Les « intentions vides » des runs NEXUS 2 & 3 de la session précédente correspondaient probablement à ce gonflement + éventuel rate limit. Piste pour Phase 2 : agressivement résumer / tronquer la message history entre tours ReAct.
+- **Fichiers touchés** : `DOCUMENT_MAITRE_PROJET.md` (cette entrée). Le log `run_phase1_3_debug.log` reste sur disque, gitignored.
+- **Repo modifié** : oui (journal uniquement).
+- **Prod alignée** : N/A.
+- **Validation réelle** : partielle (3c oui, 3a+3b câblés mais non déclenchés).
+- **Commit** : *(ce commit)*.
+
 ### 2026-04-19 — Fix dette : résolution import `contracts` dans `scripts/test_phase0.py`
 
 - **Scope** : `scripts/test_phase0.py` — import preload de `contracts` via `importlib`.
