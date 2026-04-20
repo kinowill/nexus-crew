@@ -816,12 +816,27 @@ Ne pas viser en v1 :
 
 Pour le développeur :
 
+**Runtime et orchestration**
 - `README.md`
-- `crew/crew.py`
-- `nexus.bat`
+- `crew/crew.py` — orchestration CrewAI, `FallbackLLM`, `_output_looks_malformed`, `ContractTracker` branché
+- `crew/contracts.py` — contrats de sortie par task (§1)
+- `nexus.bat` — entrée utilisateur principale
 - `requirements.txt`
-- `Audit Technique Complet du Projet NEXUS Crew - généré par LLM.txt`
-- `Utilisation 08.04.2026 - 15h30.txt`
+
+**Scripts de validation / diagnostic (offline, sans réseau)**
+- `scripts/test_phase0.py` — validation statique Phase 0 (20/20)
+- `scripts/test_resilience.py` — tests unitaires résilience NIM §3 + §3bis (24/24)
+- `test_phase0.bat` — lanceur Windows pour `test_phase0.py`
+
+**Scripts de diagnostic NIM (avec réseau, coûteux en tokens)**
+- `scripts/test_tool_use.py` — matrice tool use par modèle NIM
+- `scripts/tool_use_matrix.md` — résultats de la matrice
+- `scripts/test_crewai_schema.py` — preuve du fix schemas CrewAI→NIM (§0.c)
+- `scripts/test_connection.py` — santé connexion NIM
+
+**Contexte produit**
+- `Audit Technique Complet du Projet NEXUS Crew - généré par LLM.txt` (gitignored)
+- `Utilisation 08.04.2026 - 15h30.txt` (gitignored)
 
 Ce document maître doit être lu avant toute refonte importante du protocole ou des rôles agents.
 
