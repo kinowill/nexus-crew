@@ -749,7 +749,12 @@ Autrement dit :
   - Logs opt-in via `NEXUS_DEBUG_LLM=1` (model / rl_try / msgs / bytes / tools / roles).
   - Validation : 6 mock tests + 13 unit tests OK. **Runtime NIM réel non encore observé**, prévu dans une session instrumentée dédiée.
 - introduire une couche de gouvernance ;
-- séparer les modes `read`, `edit`, `review`, `debug`.
+- **§2 — Séparer les modes `read`, `edit`, `review`, `debug`** : ✅ SLICE A FAITE (2026-04-20).
+  - CLI `--mode {read,edit,review,debug}` dans `crew.py`, défaut `edit` (non-régression).
+  - `build_crew` route les tasks par mode : `read` = 2 tasks (Researcher + synthèse Architect), `review` = 3 tasks (Researcher + review standalone + synthèse), `edit`/`debug` = pipeline complet 6 tasks (inchangé). `debug` est alias de `edit` côté composition, différenciation produit reportée Phase 2.
+  - Garde-fou : `--write` silencieusement ignoré en mode `read` et `review`.
+  - Validation : 26/26 `test_modes.py` + 20/20 `test_phase0.py` + 24/24 `test_resilience.py`.
+  - **Slice B différée** (classifier automatique de mode à partir de `task_text`) : nécessite un premier appel LLM dédié ou heuristique, scope Phase 2.
 
 ### Phase 2 - Coopération multi-agent réelle
 
@@ -826,6 +831,7 @@ Pour le développeur :
 **Scripts de validation / diagnostic (offline, sans réseau)**
 - `scripts/test_phase0.py` — validation statique Phase 0 (20/20)
 - `scripts/test_resilience.py` — tests unitaires résilience NIM §3 + §3bis (24/24)
+- `scripts/test_modes.py` — tests unitaires modes d'usage Phase 1 §2 (26/26)
 - `test_phase0.bat` — lanceur Windows pour `test_phase0.py`
 
 **Scripts de diagnostic NIM (avec réseau, coûteux en tokens)**
@@ -847,6 +853,38 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 > Trace des modifications apportées au projet, conformément au protocole
 > (distinction repo modifié / prod alignée / validation réelle).
 > Les entrées les plus récentes sont en haut.
+
+### 2026-04-20 — Phase 1 §2 slice A : modes d'usage v1 (CLI `--mode`)
+
+- **Scope** : `crew/crew.py` — refonte de `build_crew()` pour router les tasks selon un nouveau paramètre `mode ∈ {read, edit, review, debug}` (cible produit §9 du maître). Ajout des constantes exposées `VALID_MODES`, `DEFAULT_MODE="edit"`. Nouveau flag CLI `--mode` / `-m`. Bannière et help mis à jour. Nouveau `scripts/test_modes.py` : 26 tests unitaires offline.
+- **Motivation** : dette §14 du maître (« crew séquentiel qui lance presque toujours toute la chaîne »). Concrètement, une tâche type « explique ce projet » déclenchait Coder + Critic + rework inutilement — coûts NIM, risque d'erreur, bruit dans le rapport final. §9 définit 4 modes distincts, §15 les liste comme Phase 1 §2.
+- **Design retenu (choix d'implémentation)** :
+  - **CLI flag explicite** plutôt que classifier automatique. Raison : un classifier nécessite soit une heuristique textuelle fragile, soit un appel LLM supplémentaire dédié — ajouter de la complexité avant d'avoir observé les modes en usage réel n'est pas productif. Slice B différée.
+  - **Default `edit`** → comportement actuel préservé, zéro régression pour les utilisateurs existants.
+  - **`debug` alias de `edit`** côté composition : §9 les décrit avec les mêmes agents. La différenciation produit (orientation diagnostic vs. implementation) sera prompt-level, reportée Phase 2.
+  - **Tasks distinctes par mode** (pas de réutilisation avec description conditionnelle) : `review_standalone_task` et `final_task` dédiés pour `read` / `review`. Raison : les descriptions actuelles font des références implicites au Coder/Architect qui n'existent pas dans ces modes. Plus propre de dupliquer les ~10 lignes de description que de tout conditionner.
+  - **Garde-fou `--write` en mode read/review** : ignoré silencieusement avec message d'avertissement. Évite qu'un utilisateur pense qu'il active quelque chose qui n'a pas de sens.
+- **Compositions** :
+  - `read` : 2 tasks (Researcher → Architect synthèse), 2 agents.
+  - `review` : 3 tasks (Researcher → Critic standalone → Architect synthèse), 3 agents.
+  - `edit` : 6 tasks (Researcher → Architect plan → Coder → Critic → Coder rework → Architect synthèse), 4 agents. **Pipeline actuel inchangé.**
+  - `debug` : identique à `edit`.
+  - `--deep` prepend `scan_task` quel que soit le mode.
+- **Contrats (§1)** : `ContractTracker.register()` n'enregistre que les tasks effectivement présentes dans le pipeline, pour chaque mode. Un contrat `review` pointe sur `review_task` en mode `edit` et sur `review_standalone_task` en mode `review` — les deux sont validés par le même contrat kind=`review` dans `contracts.py` (même contrainte : pattern APPROVED|CHANGES_NEEDED).
+- **Validation offline** :
+  - `scripts/test_modes.py` : 26/26 OK. Couvre composition par mode, agents présents/absents, contrats enregistrés, `--deep` × tous les modes, mode invalide lève `ValueError`, défaut sans `mode=` = `edit`.
+  - `scripts/test_phase0.py` : 20/20 OK (aucune régression sur les agents unitaires).
+  - `scripts/test_resilience.py` : 24/24 OK (aucune régression sur `_output_looks_malformed` / backoff).
+  - CLI `--help` inspecté visuellement : modes rendus correctement.
+- **Validation runtime NIM réelle** : **non effectuée dans cette session**. Raison : le gain produit attendu (économie d'appels LLM en mode `read`/`review`, rapports plus courts et ciblés) n'a pas d'impact sur la stabilité du code — tout le chemin des tasks individuelles (Researcher + Architect + Critic) est déjà exercé dans le mode `edit` actuel. Un run réel mode=`read` reste à faire sur une session instrumentée, idéalement comparé au même prompt en mode `edit` pour quantifier le gain.
+- **Risque résiduel** :
+  - Default reste `edit` donc un utilisateur qui passait « explique ce projet » sans `--mode` ne verra aucune différence — il faut qu'il découvre et utilise `--mode read`. La slice B (classifier auto) règlerait ça.
+  - `debug` = `edit` en pratique — pas de différenciation visible pour l'utilisateur si ce n'est le libellé dans la bannière. Acceptable tant que la Phase 2 n'a pas affiné les prompts.
+- **Fichiers touchés** : `crew/crew.py`, `scripts/test_modes.py` (nouveau), `DOCUMENT_MAITRE_PROJET.md` (§15 + §18 + cette entrée §19).
+- **Repo modifié** : oui.
+- **Prod alignée** : N/A (local).
+- **Validation réelle** : 70/70 tests unitaires offline cumulés (26+20+24) + CLI help vérifié. Runtime NEXUS non exercé.
+- **Commit** : *(ce commit)*.
 
 ### 2026-04-20 — Phase 1 §3bis : couverture variance NIM « 0 tools au tour 1 »
 

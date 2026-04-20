@@ -689,12 +689,30 @@ def make_scanner() -> Agent:
 
 # ─── Construction du crew ─────────────────────────────────────────────────────
 
+# Phase 1 §2 (journal 2026-04-20) — Modes d'usage v1. Cible produit §9 du
+# maître. Chaque mode route un sous-ensemble de tasks pour eviter la
+# sur-utilisation systematique du pipeline complet (dette §14 : "crew sequentiel
+# qui lance presque toujours toute la chaine"). L'utilisateur choisit
+# explicitement via --mode (classifier automatique reporte en slice B).
+#
+#  - read   : comprehension / audit sans modification (Researcher + final).
+#  - edit   : modification propre avec validation (pipeline complet, defaut).
+#  - review : relecture d'un etat existant, pas d'apres-Coder (Researcher +
+#             review standalone + final).
+#  - debug  : investigation + correction (alias de edit pour l'instant,
+#             differenciation produit prevue Phase 2).
+VALID_MODES = ("read", "edit", "review", "debug")
+DEFAULT_MODE = "edit"
+
+
 def build_crew(task_text: str, project_path: Path, deep: bool,
-               tracker: ContractTracker | None = None) -> Crew:
+               tracker: ContractTracker | None = None,
+               mode: str = DEFAULT_MODE) -> Crew:
+    if mode not in VALID_MODES:
+        raise ValueError(f"mode invalide : {mode!r} (attendu : {VALID_MODES})")
+
+    # Le Researcher est commun a tous les modes.
     researcher = make_researcher()
-    architect  = make_architect()
-    coder      = make_coder()
-    critic     = make_critic()
 
     research_task = Task(
         description=(
@@ -711,82 +729,153 @@ def build_crew(task_text: str, project_path: Path, deep: bool,
         agent=researcher,
     )
 
-    plan_task = Task(
-        description=(
-            f"À partir de la carte produite par le Researcher et de la tâche : {task_text}\n\n"
-            "Produis un plan d'exécution étape par étape :\n"
-            "- Numérote chaque étape\n"
-            "- Indique les fichiers exacts à toucher\n"
-            "- Précise l'ordre et les dépendances\n"
-            "- Liste les points à vérifier par le Critic"
-        ),
-        expected_output="Un plan numéroté et actionnable pour le Coder",
-        agent=architect,
-        context=[research_task],
-    )
+    # On instancie les agents et tasks specifiques selon le mode. Les modes
+    # "read" et "review" n'ont pas besoin du Coder — economie concrete NIM.
+    if mode == "read":
+        # Lecture seule : Researcher plonge, Architect synthetise pour l'utilisateur.
+        architect = make_architect()
+        final_task = Task(
+            description=(
+                f"Synthèse pour l'utilisateur (mode READ — aucune modification).\n"
+                f"Tâche originale : {task_text}\n\n"
+                "À partir de la carte du Researcher, produis un rapport clair :\n"
+                "- Ce que fait le projet / le module concerné\n"
+                "- Points clés d'architecture et dépendances\n"
+                "- Risques ou points d'attention identifiés\n"
+                "- Références aux fichiers pertinents (chemins précis)\n"
+                "Ne propose PAS de modification : l'utilisateur veut comprendre, pas agir."
+            ),
+            expected_output="Un rapport final markdown lisible par un humain non-développeur",
+            agent=architect,
+            context=[research_task],
+        )
+        tasks = [research_task, final_task]
+        agents = [researcher, architect]
 
-    code_task = Task(
-        description=(
-            "Exécute fidèlement le plan de l'Architect.\n"
-            "- Lis les fichiers avant de les modifier (read_file)\n"
-            "- Utilise grep pour trouver les références impactées\n"
-            "- Utilise write_file pour persister chaque changement\n"
-            "- Ne fais AUCUN changement hors du plan\n"
-            "- Retourne un résumé précis des fichiers touchés et ce qui a changé"
-        ),
-        expected_output="Un résumé structuré des changements, avec la liste des fichiers modifiés",
-        agent=coder,
-        context=[plan_task],
-    )
+    elif mode == "review":
+        # Relecture d'un etat existant (pas d'output Coder a analyser).
+        critic = make_critic()
+        architect = make_architect()
+        review_standalone_task = Task(
+            description=(
+                f"Review du code existant (mode REVIEW — pas de travail Coder à analyser).\n"
+                f"Tâche originale : {task_text}\n\n"
+                "À partir de la carte du Researcher, relis le code existant :\n"
+                "- Cherche bugs, failles de sécurité, edge cases\n"
+                "- Repère les risques de régression potentiels\n"
+                "- Identifie les conventions non respectées\n"
+                "- Tu es en LECTURE SEULE : pas d'écriture, pas de shell, pas de tests. "
+                "Si un test devrait être lancé, mentionne-le dans ton feedback.\n"
+                "Finis par APPROVED si le code est propre, ou CHANGES_NEEDED avec les "
+                "corrections recommandées (que l'utilisateur appliquera lui-même ou "
+                "en mode edit)."
+            ),
+            expected_output="APPROVED ou CHANGES_NEEDED avec feedback détaillé",
+            agent=critic,
+            context=[research_task],
+        )
+        final_task = Task(
+            description=(
+                f"Synthèse pour l'utilisateur (mode REVIEW — aucune modification appliquée).\n"
+                f"Tâche originale : {task_text}\n\n"
+                "Produis un rapport clair :\n"
+                "- Verdict du Critic (APPROVED / CHANGES_NEEDED)\n"
+                "- Liste des findings importants\n"
+                "- Recommandations concrètes (fichiers, lignes, corrections suggérées)\n"
+                "- Points d'attention restants pour l'utilisateur"
+            ),
+            expected_output="Un rapport final markdown lisible par un humain non-développeur",
+            agent=architect,
+            context=[research_task, review_standalone_task],
+        )
+        tasks = [research_task, review_standalone_task, final_task]
+        agents = [researcher, critic, architect]
 
-    review_task = Task(
-        description=(
-            "Review le travail du Coder :\n"
-            "- Confronte les changements au plan de l'Architect\n"
-            "- Cherche bugs, failles de sécurité, edge cases\n"
-            "- Vérifie les régressions potentielles (grep sur les symboles modifiés)\n"
-            "- Tu es en LECTURE SEULE : pas d'écriture, pas de shell, pas de tests. "
-            "Si tu penses qu'un test devrait être lancé, mentionne-le dans ton feedback.\n"
-            "Finis par APPROVED si tout est bon, ou CHANGES_NEEDED avec les corrections à apporter"
-        ),
-        expected_output="APPROVED ou CHANGES_NEEDED avec feedback détaillé",
-        agent=critic,
-        context=[plan_task, code_task],
-    )
+    else:
+        # mode == "edit" ou mode == "debug" : meme pipeline (differenciation
+        # produit reportee Phase 2).
+        architect = make_architect()
+        coder      = make_coder()
+        critic     = make_critic()
 
-    rework_task = Task(
-        description=(
-            "Lis le verdict du Critic.\n"
-            "- Si le Critic a conclu par APPROVED : réponds simplement 'APPROVED — aucun changement nécessaire'.\n"
-            "- Si le Critic a conclu par CHANGES_NEEDED : applique chaque correction demandée "
-            "  en utilisant read_file + write_file. Ne touche QUE ce que le Critic demande. "
-            "  Liste les fichiers retouchés.\n"
-            "Tu peux interroger le Critic si une correction est ambiguë."
-        ),
-        expected_output="Soit 'APPROVED — aucun changement', soit la liste des corrections appliquées",
-        agent=coder,
-        context=[plan_task, code_task, review_task],
-    )
+        plan_task = Task(
+            description=(
+                f"À partir de la carte produite par le Researcher et de la tâche : {task_text}\n\n"
+                "Produis un plan d'exécution étape par étape :\n"
+                "- Numérote chaque étape\n"
+                "- Indique les fichiers exacts à toucher\n"
+                "- Précise l'ordre et les dépendances\n"
+                "- Liste les points à vérifier par le Critic"
+            ),
+            expected_output="Un plan numéroté et actionnable pour le Coder",
+            agent=architect,
+            context=[research_task],
+        )
 
-    final_task = Task(
-        description=(
-            f"Synthèse finale pour l'utilisateur.\n"
-            f"Tâche originale : {task_text}\n\n"
-            "Produis un rapport clair et concis :\n"
-            "- Ce qui a été fait\n"
-            "- Ce qui a été reviewé + corrections éventuelles appliquées\n"
-            "- État final (succès / corrections demandées / bloqué)\n"
-            "- Fichiers touchés avec leurs chemins\n"
-            "- Points d'attention restants pour l'utilisateur"
-        ),
-        expected_output="Un rapport final markdown lisible par un humain non-développeur",
-        agent=architect,
-        context=[research_task, plan_task, code_task, review_task, rework_task],
-    )
+        code_task = Task(
+            description=(
+                "Exécute fidèlement le plan de l'Architect.\n"
+                "- Lis les fichiers avant de les modifier (read_file)\n"
+                "- Utilise grep pour trouver les références impactées\n"
+                "- Utilise write_file pour persister chaque changement\n"
+                "- Ne fais AUCUN changement hors du plan\n"
+                "- Retourne un résumé précis des fichiers touchés et ce qui a changé"
+            ),
+            expected_output="Un résumé structuré des changements, avec la liste des fichiers modifiés",
+            agent=coder,
+            context=[plan_task],
+        )
 
-    tasks  = [research_task, plan_task, code_task, review_task, rework_task, final_task]
-    agents = [researcher, architect, coder, critic]
+        review_task = Task(
+            description=(
+                "Review le travail du Coder :\n"
+                "- Confronte les changements au plan de l'Architect\n"
+                "- Cherche bugs, failles de sécurité, edge cases\n"
+                "- Vérifie les régressions potentielles (grep sur les symboles modifiés)\n"
+                "- Tu es en LECTURE SEULE : pas d'écriture, pas de shell, pas de tests. "
+                "Si tu penses qu'un test devrait être lancé, mentionne-le dans ton feedback.\n"
+                "Finis par APPROVED si tout est bon, ou CHANGES_NEEDED avec les corrections à apporter"
+            ),
+            expected_output="APPROVED ou CHANGES_NEEDED avec feedback détaillé",
+            agent=critic,
+            context=[plan_task, code_task],
+        )
 
+        rework_task = Task(
+            description=(
+                "Lis le verdict du Critic.\n"
+                "- Si le Critic a conclu par APPROVED : réponds simplement 'APPROVED — aucun changement nécessaire'.\n"
+                "- Si le Critic a conclu par CHANGES_NEEDED : applique chaque correction demandée "
+                "  en utilisant read_file + write_file. Ne touche QUE ce que le Critic demande. "
+                "  Liste les fichiers retouchés.\n"
+                "Tu peux interroger le Critic si une correction est ambiguë."
+            ),
+            expected_output="Soit 'APPROVED — aucun changement', soit la liste des corrections appliquées",
+            agent=coder,
+            context=[plan_task, code_task, review_task],
+        )
+
+        final_task = Task(
+            description=(
+                f"Synthèse finale pour l'utilisateur.\n"
+                f"Tâche originale : {task_text}\n\n"
+                "Produis un rapport clair et concis :\n"
+                "- Ce qui a été fait\n"
+                "- Ce qui a été reviewé + corrections éventuelles appliquées\n"
+                "- État final (succès / corrections demandées / bloqué)\n"
+                "- Fichiers touchés avec leurs chemins\n"
+                "- Points d'attention restants pour l'utilisateur"
+            ),
+            expected_output="Un rapport final markdown lisible par un humain non-développeur",
+            agent=architect,
+            context=[research_task, plan_task, code_task, review_task, rework_task],
+        )
+
+        tasks  = [research_task, plan_task, code_task, review_task, rework_task, final_task]
+        agents = [researcher, architect, coder, critic]
+
+    # Scanner ajoute en tete si --deep, quel que soit le mode.
+    scan_task = None
     if deep:
         scanner = make_scanner()
         scan_task = Task(
@@ -802,15 +891,23 @@ def build_crew(task_text: str, project_path: Path, deep: bool,
         research_task.context = [scan_task]
         agents = [scanner] + agents
 
-    # -- Contract tracking (Phase 1) --
+    # -- Contract tracking (Phase 1 §1) --
+    # On enregistre chaque task effectivement presente dans le pipeline.
+    # Le kind sert a selectionner le bon contrat (crew/contracts.py).
     if tracker:
         tracker.register(research_task.description, "research")
-        tracker.register(plan_task.description, "plan")
-        tracker.register(code_task.description, "code")
-        tracker.register(review_task.description, "review")
-        tracker.register(rework_task.description, "rework")
-        tracker.register(final_task.description, "final")
-        if deep:
+        if mode == "read":
+            tracker.register(final_task.description, "final")
+        elif mode == "review":
+            tracker.register(review_standalone_task.description, "review")
+            tracker.register(final_task.description, "final")
+        else:  # edit / debug
+            tracker.register(plan_task.description, "plan")
+            tracker.register(code_task.description, "code")
+            tracker.register(review_task.description, "review")
+            tracker.register(rework_task.description, "rework")
+            tracker.register(final_task.description, "final")
+        if scan_task is not None:
             tracker.register(scan_task.description, "scan")
 
     crew_kwargs: dict = dict(
@@ -849,15 +946,23 @@ def main():
         description="NEXUS Crew — multi-agent avec accès fichiers réel via NVIDIA NIM",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
+            "Modes (--mode) :\n"
+            "  read    Compréhension / audit sans modification (Researcher + Architect)\n"
+            "  edit    Modification propre avec validation (pipeline complet, défaut)\n"
+            "  review  Relecture d'un état existant (Researcher + Critic + synthèse)\n"
+            "  debug   Investigation + correction (alias edit pour l'instant)\n\n"
             "Exemples :\n"
-            '  python crew.py "fais un point sur le projet" --project C:/mon-projet\n'
-            '  python crew.py "refactore l\'auth" --project C:/mon-projet --write\n'
+            '  python crew.py "explique ce projet" --project C:/mon-projet --mode read\n'
+            '  python crew.py "refactore l\'auth" --project C:/mon-projet --mode edit --write\n'
+            '  python crew.py "relis mes derniers changements" --project C:/mon-projet --mode review\n'
             '  python crew.py "lance les tests" --project C:/mon-projet --allow-shell\n'
             '  python crew.py "audit complet" --project C:/gros-projet --deep --write\n'
         ),
     )
     parser.add_argument("task", help="La tâche à accomplir")
     parser.add_argument("--project", "-p", required=True, help="Chemin du projet")
+    parser.add_argument("--mode", "-m", choices=VALID_MODES, default=DEFAULT_MODE,
+                        help=f"Mode d'usage : {' / '.join(VALID_MODES)} (défaut : {DEFAULT_MODE})")
     parser.add_argument("--write", "-w", action="store_true",
                         help="Active l'écriture réelle de fichiers (sinon dry-run)")
     parser.add_argument("--allow-shell", "-s", action="store_true",
@@ -869,6 +974,14 @@ def main():
                         help="Dossier supplémentaire accessible (répétable). "
                              "Ex : --allow C:/autres/libs --allow D:/data")
     args = parser.parse_args()
+
+    # Garde-fou : en mode read ou review, --write n'a aucun sens (pas de Coder
+    # dans le pipeline). On avertit et on continue — l'argparse garde ne suffit
+    # pas car write est aussi consomme par _resolve_project_rel / write_file_tool
+    # pour la permission globale.
+    if args.mode in ("read", "review") and args.write:
+        print(f"ATTENTION : --write ignoré en mode {args.mode} (pas de Coder dans ce pipeline).")
+        args.write = False
 
     project_path = Path(args.project).resolve()
     if not project_path.is_dir():
@@ -898,7 +1011,7 @@ def main():
     print("║  NEXUS Crew v1 — Multi-agent avec accès fichiers réel     ║")
     print("╚════════════════════════════════════════════════════════════╝")
     print(f"  Projet  : {project_path}")
-    print(f"  Mode    : {'DEEP (5 agents)' if args.deep else 'NORMAL (4 agents)'}")
+    print(f"  Mode    : {args.mode.upper()}{' + DEEP (Scanner)' if args.deep else ''}")
     print(f"  Tâche   : {args.task}")
     print()
     # Permissions actives — rendu explicite pour que l'utilisateur voie
@@ -917,7 +1030,8 @@ def main():
     print()
 
     tracker = ContractTracker()
-    crew = build_crew(args.task, project_path, deep=args.deep, tracker=tracker)
+    crew = build_crew(args.task, project_path, deep=args.deep,
+                      tracker=tracker, mode=args.mode)
     result = crew.kickoff()
 
     print()
