@@ -854,6 +854,33 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 > (distinction repo modifié / prod alignée / validation réelle).
 > Les entrées les plus récentes sont en haut.
 
+### 2026-04-20 — Observation runtime mode REVIEW + **dette §3bis : retry budget épuisable**
+
+- **Scope** : run NEXUS réel `--mode review`, prompt `"Relis crew/crew.py et identifie les risques ou points faibles"`, `NEXUS_DEBUG_LLM=1`. Log : `run_mode_review.log` (gitignored).
+- **Résultat** : exit 0, rapport final structuré par l'Architect (sécurité / robustesse / architecture / tests / documentation + résumé exécutif + priorités). Pipeline mode=review validé bout-en-bout.
+- **Métriques** : 7 LLM calls (3 Qwen 3.5 397B + 4 Kimi K2 Thinking), 1 retry XML Hermes déclenché, 0 × 429, 0 fallback actif, **1 violation contrat runtime** (`research` / `required_tools` : aucun outil appelé).
+- **DÉCOUVERTE IMPORTANTE — §3bis n'a pas déclenché alors qu'il aurait dû**. Séquence observée :
+  1. 1er appel Researcher → sortie XML Hermes cassée → `_output_looks_malformed` retourne True.
+  2. Retry-1 déclenché, `malformed_retry_used = True`.
+  3. 2e appel Researcher → sortie d'intention narrative plate : *« Je vais analyser le projet situé dans... Commençons par explorer... »* (~270 chars, contient les marqueurs `"je vais"` ET `"commençons"`, aurait été détectée par §3bis).
+  4. MAIS `malformed_retry_used` est déjà True → la sortie est retournée telle quelle → violation contrat aval.
+- **Cause racine** : le retry budget actuel (`crew/crew.py:300`) est de **1 retry par appel agent**, partagé entre les deux modes de défaillance (XML Hermes et intention 0-tools). Quand les deux se succèdent sur la même requête, le second est brûlé.
+- **Pourquoi le run a tout de même abouti** : le Critic Kimi K2 a compensé en lisant `crew/crew.py` directement via ses propres outils (4 calls), et l'Architect a synthétisé à partir du Critic plutôt que du Researcher. Le pipeline mode=review s'est auto-rattrapé, mais la carte Researcher était vide.
+- **Dettes runtime mises à jour** :
+  - **§3b (retry XML Hermes) : re-confirmée** (1 déclenchement, mais cette fois sans bénéfice net car la suite a re-cassé).
+  - **§3bis (variance 0-tools) : dette reformulée** — le filtre logique est correct, MAIS le retry budget est épuisable. Logique non défectueuse, stratégie de retry insuffisante.
+  - **Mode=review : clôturée runtime côté composition** (routing correct, Critic/Architect corrects, rapport final exploitable). Mais le scénario où la carte Researcher est vide révèle une dépendance insuffisante explicite entre tasks — à creuser Phase 2.
+- **Pistes pour session future (NON traitées ici)** :
+  1. Étendre le retry à **deux budgets distincts** : `xml_hermes_retry_used` et `intention_retry_used`, indépendants. Permet de rattraper une cascade `XML Hermes → intention`.
+  2. OU passer au **fallback chain** dès qu'un 2e mode de défaillance est détecté (pragmatique : change de modèle plutôt que de ré-insister).
+  3. Durcir le contrat `research` pour forcer au moins un outil avant acceptance (échec fort au lieu de violation logguée).
+  4. Désambiguïser le `print()` de retry-1 : actuellement `[sortie XML Hermes ... : retry-1]` alors que le filtre couvre aussi la variance 0-tools. Libellé trompeur quand ce deuxième chemin se déclenche.
+- **Fichiers touchés** : `DOCUMENT_MAITRE_PROJET.md` (cette entrée). Aucun changement de code.
+- **Repo modifié** : oui (journal uniquement).
+- **Prod alignée** : N/A.
+- **Validation réelle** : oui, runtime NEXUS exit 0. Mode=review fonctionnel malgré Researcher défaillant. Nouvelle dette identifiée (retry budget).
+- **Commit** : *(ce commit)*.
+
 ### 2026-04-20 — Observation runtime mode READ + validation §3b retry XML Hermes
 
 - **Scope** : run NEXUS réel avec `--mode read`, `NEXUS_DEBUG_LLM=1`, prompt témoin identique à `ea8fa3a` pour permettre comparaison directe.
