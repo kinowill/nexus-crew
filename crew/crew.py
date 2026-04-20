@@ -171,6 +171,23 @@ def _strip_strict_tools(tools: list) -> list:
 # sans tool_calls quand des tools sont fournis). Voir journal 2026-04-19.
 RATE_LIMIT_BACKOFFS = [1.0, 2.0, 4.0]  # attentes apres 429 avant fallback chain
 
+# Phase 1 §3bis (journal 2026-04-20) — Variance "0 tools au tour 1" : un modele
+# peut renvoyer une intention en texte nu sans emettre de tool_call alors que
+# des outils sont disponibles. Symptome observe Researcher Qwen 3.5 397B :
+# 132 chars du type "Je vais lire le README pour comprendre le projet...".
+# On flagge les sorties courtes qui contiennent un marqueur d'intention typique.
+MALFORMED_SHORT_TEXT_MAX = 300  # seuil de "reponse courte"
+_INTENTION_PATTERNS = (
+    # FR
+    "je vais", "je dois", "d'abord", "pour repondre", "pour répondre",
+    "je commence", "commencons", "commençons",
+    # EN (CrewAI prompts sont en anglais par defaut)
+    "let me ", "i'll ", "i will ", "i need to ", "i should ",
+    "first, i", "first i", "to answer", "to solve",
+    # ReAct markers CrewAI : "Thought:" sans action reelle
+    "thought:",
+)
+
 
 def _is_rate_limit_error(err: Exception) -> bool:
     """Detecte 429 / rate limit via nom de classe ou message."""
@@ -182,16 +199,29 @@ def _is_rate_limit_error(err: Exception) -> bool:
 
 
 def _output_looks_malformed(out, had_tools: bool) -> bool:
-    """Detecte une sortie XML Hermes cassee quand des tools etaient fournis.
+    """Detecte une sortie cassee quand des tools etaient fournis.
 
-    Symptome observe (Qwen Coder, Kimi K2) : le modele emet <tool_call>... ou
-    <function=... au lieu du format tool_calls natif OpenAI. CrewAI ne parse
-    pas ce format et retourne le XML brut comme "Final Answer", d'ou les
-    "intentions vides" vues en run NEXUS 2 & 3 du 2026-04-19.
+    Deux modes de defaillance couverts :
+
+    1. XML Hermes (journal 2026-04-19) — le modele emet <tool_call>... ou
+       <function=... au lieu du format tool_calls natif OpenAI (Qwen Coder,
+       Kimi K2). CrewAI ne parse pas ce format et retourne le XML brut comme
+       "Final Answer".
+    2. Intention 0-tools courte (journal 2026-04-20) — le modele repond en
+       texte narratif court sans appeler d'outil alors que des outils sont
+       disponibles. Le filtre cumule trois signaux pour minimiser les faux
+       positifs : tools fournis + sortie < MALFORMED_SHORT_TEXT_MAX chars
+       + presence d'un marqueur d'intention typique.
     """
     if not had_tools or not isinstance(out, str):
         return False
-    return "<tool_call>" in out or "<function=" in out
+    if "<tool_call>" in out or "<function=" in out:
+        return True
+    if len(out) < MALFORMED_SHORT_TEXT_MAX:
+        low = out.lower()
+        if any(p in low for p in _INTENTION_PATTERNS):
+            return True
+    return False
 
 
 class FallbackLLM(BaseLLM):

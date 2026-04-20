@@ -833,6 +833,29 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 > (distinction repo modifié / prod alignée / validation réelle).
 > Les entrées les plus récentes sont en haut.
 
+### 2026-04-20 — Phase 1 §3bis : couverture variance NIM « 0 tools au tour 1 »
+
+- **Scope** : `crew/crew.py` — extension de `_output_looks_malformed()`. Ajout de deux constantes exposées au niveau module (`MALFORMED_SHORT_TEXT_MAX = 300`, `_INTENTION_PATTERNS`). `scripts/test_resilience.py` nouveau : 24 tests unitaires offline.
+- **Motivation** : dette identifiée le 2026-04-19 (entrée « Tentative Critic v2 … rollback »). Le Researcher répondait parfois en texte nu court (~132 chars) sans émettre de `tool_call` alors que des outils étaient fournis. Ce mode de défaillance échappait à `_output_looks_malformed` qui ne détectait que le XML Hermes (`<tool_call>` / `<function=`).
+- **Choix parmi les 3 pistes du journal précédent** : **Piste 1** (heuristique dans le filtre). Raisons :
+  - réutilise l'infra retry-1 déjà câblée (`crew.py:297`), pas de nouveau chemin ;
+  - ne modifie pas les prompts CrewAI (évite le biais over-tooling de la piste 2) ;
+  - ne brûle pas de fallbacks inutilement (contrairement à la piste 3) ;
+  - easy rollback si faux positifs (révertir la fonction seule).
+- **Heuristique retenue** : sortie flaggée si `had_tools=True` ET `len(out) < 300` ET présence d'un marqueur d'intention dans `_INTENTION_PATTERNS` (`je vais`, `let me`, `i need to`, `i'll`, `d'abord`, `thought:`, etc.). La **condition cumulative** est importante — une réponse finale courte sans marqueur d'intention (ex. `VERDICT: APPROVED`, code snippet, valeur brute) n'est pas flaggée.
+- **Validation tests unitaires (`scripts/test_resilience.py`)** : 24/24 OK. Couvre :
+  - détection XML Hermes (non-régression §3) ;
+  - détection intention courte FR/EN + marqueur ReAct `Thought:` ;
+  - non-régression : `VERDICT: APPROVED`/`CHANGES_NEEDED` courts NON flaggés, code snippet NON flaggé, intention longue NON flaggée, `had_tools=False` filtre inerte, `out` non-str filtre inerte.
+- **Validation Phase 0 (`scripts/test_phase0.py`)** : 20/20 OK, aucune régression.
+- **Validation runtime NIM réelle** : **non effectuée** dans cette session. La condition qui déclenche la variance 0-tools n'est pas reproductible à la demande (la session précédente a observé le mode 2 fois sur 3 runs, puis 0 fois sur le re-run suivant). Le retry-1 additionnel sera observé opportunément lors d'une session où le mode se présente, comme pour §3a/§3b. Dette runtime toujours ouverte mais couverture logique élargie.
+- **Risque résiduel** : faux positif possible si un agent produit une réponse finale courte (< 300 chars) qui contient par hasard un marqueur (« Let me summarize »). Surveillance : si `[sortie XML Hermes X : retry-1]` apparaît sur des réponses finales légitimes, resserrer `MALFORMED_SHORT_TEXT_MAX` (ex. 200) ou durcir la liste de marqueurs. Message de log inchangé — le libellé « XML Hermes » est imprécis mais le chemin code est le même ; renommage déféré pour éviter de casser les grep runtime existants.
+- **Fichiers touchés** : `crew/crew.py`, `scripts/test_resilience.py`, `DOCUMENT_MAITRE_PROJET.md` (cette entrée).
+- **Repo modifié** : oui.
+- **Prod alignée** : N/A (local).
+- **Validation réelle** : partielle — 24/24 unit tests + 20/20 Phase 0, **pas de run NEXUS instrumenté** dans cette session (cf. dette runtime ouverte).
+- **Commit** : *(ce commit)*.
+
 ### 2026-04-19 — Tentative Critic v2 (contrat 3 sections + VERDICT:) rollback / variance NIM 0-tools non couverte
 
 - **Scope** : `crew/crew.py` — modifications de `make_critic()` backstory + `review_task` description/expected_output pour imposer un format de sortie strict à 3 sections (`Fichiers relus:` / `Findings:` / `VERDICT: APPROVED|CHANGES_NEEDED`) et forcer l'appel de `read_file`.
