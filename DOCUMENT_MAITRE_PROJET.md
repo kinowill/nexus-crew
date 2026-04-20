@@ -854,6 +854,37 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 > (distinction repo modifié / prod alignée / validation réelle).
 > Les entrées les plus récentes sont en haut.
 
+### 2026-04-20 — Observation runtime mode READ + validation §3b retry XML Hermes
+
+- **Scope** : run NEXUS réel avec `--mode read`, `NEXUS_DEBUG_LLM=1`, prompt témoin identique à `ea8fa3a` pour permettre comparaison directe.
+- **Commande** : `python crew/crew.py "Explique en 3 lignes ce que fait ce projet (lis README.md)" --project . --mode read`
+- **Log** : `run_mode_read.log` (gitignored).
+- **Résultat** : exit 0, rapport final structuré produit par l'Architect (explication + modes + roadmap + vision), marqueur explicite `Aucune modification apportée au projet (mode READ).`
+- **Métriques comparées** :
+
+| Métrique | Run témoin `ea8fa3a` (mode edit) | Run mode=read |
+|---|---|---|
+| Tasks exécutées | 6 | **2** |
+| Appels LLM tracés | 15 | **9** |
+| Violations contrat runtime | 1 (Critic) | **0** |
+| Déclenchements 429 | 0 | 0 |
+| Retries XML Hermes | 0 | **2** |
+| Fallbacks actifs | 0 | 0 |
+
+- **Dette runtime §3b (retry XML Hermes) : ✅ CLÔTURÉE**. Première observation runtime du retry-1 en conditions réelles, deux fois sur `qwen3.5-397b-a17b` (Researcher primaire). Les deux retries ont abouti (`[LLM] qwen3.5-397b-a17b OK apres rl_retries=0 malformed_retry=True`), confirmant que le mécanisme fonctionne bout-en-bout. La variance XML Hermes n'est pas systématique mais le retry-1 la rattrape.
+- **Dette runtime mode=read : ✅ CLÔTURÉE**. Composition correcte (Researcher + Architect uniquement, pas de Coder/Critic), rapport final structuré adapté à un humain non-développeur, aucune violation de contrat, `--write` proprement ignoré (bannière affichait `write_file : OFF`).
+- **Dettes runtime encore ouvertes** :
+  - §3a (backoff 429) : 0 déclenchement, conditions non reproductibles à la demande.
+  - §3bis (variance 0-tools intention courte) : 0 déclenchement, idem — le Researcher n'a pas produit d'intention courte ce run, le filtre étendu n'a pas eu à agir.
+  - Mode=`review`, mode=`debug`, mode=`read + --deep` : jamais exercés en runtime.
+- **Gain produit mesuré** : **-40% d'appels LLM** (9 vs 15) pour un prompt de type « comprendre le projet ». Le rapport final est aussi plus court et ciblé (pas de sections parasites « Ce qui a été reviewé / Corrections appliquées » qui n'ont pas de sens en lecture seule). Économie concrète NIM tokens + pertinence du livrable.
+- **Observation bonus** : le Researcher a lu spontanément `DOCUMENT_MAITRE_PROJET.md` et `crew/contracts.py` en plus du `README.md` demandé, et le rapport final reflète la vraie structure du projet (y compris la section modes qu'on vient de créer). Le workflow multi-fichiers fonctionne bien sur ce type de prompt.
+- **Fichiers touchés** : `DOCUMENT_MAITRE_PROJET.md` (cette entrée). Aucun changement de code.
+- **Repo modifié** : oui (journal uniquement).
+- **Prod alignée** : N/A.
+- **Validation réelle** : oui, runtime NEXUS exit 0 + métriques capturées + log archivé localement (gitignored).
+- **Commit** : *(ce commit)*.
+
 ### 2026-04-20 — Phase 1 §2 slice A : modes d'usage v1 (CLI `--mode`)
 
 - **Scope** : `crew/crew.py` — refonte de `build_crew()` pour router les tasks selon un nouveau paramètre `mode ∈ {read, edit, review, debug}` (cible produit §9 du maître). Ajout des constantes exposées `VALID_MODES`, `DEFAULT_MODE="edit"`. Nouveau flag CLI `--mode` / `-m`. Bannière et help mis à jour. Nouveau `scripts/test_modes.py` : 26 tests unitaires offline.
