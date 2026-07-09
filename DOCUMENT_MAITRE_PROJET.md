@@ -855,6 +855,15 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 > (distinction repo modifié / prod alignée / validation réelle).
 > Les entrées les plus récentes sont en haut.
 
+### 2026-07-09 — Docs README post-read simplifie
+
+- **Scope** : `README.md`, `DOCUMENT_MAITRE_PROJET.md`.
+- **Changement** : correction de deux restes de documentation apres le passage du mode `read` a 1 task Researcher direct : l'exemple CLI ne parle plus de "2 agents", et l'exemple de validation runtime bornee utilise maintenant le mode `read` valide plutot que `review`.
+- **Repo modifie** : oui.
+- **Prod alignee** : N/A.
+- **Validation reelle effectuee** : `git diff --check` OK; pas de test Python requis (docs uniquement).
+- **Commit** : *(ce commit)*.
+
 ### 2026-07-09 — Phase 1 §2/§3 runtime borné : délégation désactivée, read simplifié, fallbacks Researcher/Architect corrigés
 
 - **Scope** : `crew/crew.py`, `scripts/test_modes.py`, `scripts/test_resilience.py`, `README.md`, `DOCUMENT_MAITRE_PROJET.md`.
@@ -877,6 +886,7 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 - **Prod alignée** : N/A.
 - **Validation réelle effectuée** : offline oui; runtime NIM oui sur `--mode read`; autres modes non retestés dans ce bloc.
 - **Commit** : *(ce commit)*.
+
 ### 2026-07-09 — Phase 1 §3bis / Retry budgets séparés + timeout LLM
 
 - **Scope** : `crew/crew.py`, `scripts/test_resilience.py`, corrections lint mécaniques dans les scripts de diagnostic/tests, README et document maître.

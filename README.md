@@ -267,7 +267,7 @@ python crew/crew.py "ta tache" --project C:/chemin/projet [options]
 Pour eviter qu'un run NIM long bloque la session Codex, borner les appels LLM :
 
 ```bash
-NEXUS_LLM_TIMEOUT_SECONDS=30 NEXUS_DEBUG_LLM=1 python crew/crew.py "Relis crew/crew.py" --project . --mode review
+NEXUS_LLM_TIMEOUT_SECONDS=30 NEXUS_DEBUG_LLM=1 python crew/crew.py "Explique en 2 lignes ce que fait ce projet (lis README.md)" --project . --mode read
 ```
 
 Le defaut reste 90s par appel modele. Pour une validation courte, utiliser 30-45s,
@@ -276,7 +276,7 @@ puis conserver le log dans un fichier local gitignore si le run doit etre analys
 ### Exemples
 
 ```bash
-# Comprendre / auditer sans modification (2 agents, pas de Coder)
+# Comprendre / auditer sans modification (Researcher direct, pas de Coder)
 python crew/crew.py "explique ce projet" -p . --mode read
 
 # Modification avec validation (pipeline complet, defaut)
