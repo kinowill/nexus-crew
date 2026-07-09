@@ -27,6 +27,9 @@ ContractTracker = contracts.ContractTracker
 GOVERNANCE_OK = contracts.GOVERNANCE_OK
 GOVERNANCE_BLOCKED_CONTRACT_VIOLATIONS = contracts.GOVERNANCE_BLOCKED_CONTRACT_VIOLATIONS
 CONTRACT_BLOCK_EXIT_CODE = contracts.CONTRACT_BLOCK_EXIT_CODE
+VIOLATION_SEVERITY_BLOCKER = contracts.VIOLATION_SEVERITY_BLOCKER
+ACTION_HINT_USE_REQUIRED_TOOL = contracts.ACTION_HINT_USE_REQUIRED_TOOL
+ACTION_HINT_EXPAND_OUTPUT = contracts.ACTION_HINT_EXPAND_OUTPUT
 
 results: list[tuple[str, bool, str]] = []
 
@@ -94,6 +97,9 @@ payload = bad_tracker.governance_payload(strict_contracts=True)
 check("payload : status stable", payload["status"] == GOVERNANCE_BLOCKED_CONTRACT_VIOLATIONS)
 check("payload : violations serialisees", len(payload["violations"]) == 2)
 check("payload : premiere violation detaillee", payload["violations"][0]["rule"] == "required_tools")
+check("payload : severite blocker", payload["violations"][0]["severity"] == VIOLATION_SEVERITY_BLOCKER)
+check("payload : action hint outil requis", payload["violations"][0]["action_hint"] == ACTION_HINT_USE_REQUIRED_TOOL)
+check("payload : action hint output court", payload["violations"][1]["action_hint"] == ACTION_HINT_EXPAND_OUTPUT)
 json_payload = json.loads(bad_tracker.governance_json(strict_contracts=True))
 check("json : payload parsable", json_payload["exit_code"] == CONTRACT_BLOCK_EXIT_CODE)
 with tempfile.TemporaryDirectory() as tmpdir:
@@ -103,6 +109,7 @@ with tempfile.TemporaryDirectory() as tmpdir:
     )
     written_payload = json.loads(output_path.read_text(encoding="utf-8"))
 check("json file : rapport ecrit", written_payload["violations_count"] == 2)
+check("json file : action hint conserve", written_payload["violations"][0]["action_hint"] == ACTION_HINT_USE_REQUIRED_TOOL)
 
 
 # -- Review contract accepts either expected verdict ------------------------

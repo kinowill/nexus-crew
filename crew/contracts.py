@@ -24,6 +24,10 @@ from pathlib import Path
 GOVERNANCE_OK = "OK"
 GOVERNANCE_BLOCKED_CONTRACT_VIOLATIONS = "BLOCKED_CONTRACT_VIOLATIONS"
 CONTRACT_BLOCK_EXIT_CODE = 2
+VIOLATION_SEVERITY_BLOCKER = "blocker"
+ACTION_HINT_USE_REQUIRED_TOOL = "rerun_task_with_required_tool"
+ACTION_HINT_EXPAND_OUTPUT = "rerun_task_with_more_complete_output"
+ACTION_HINT_INCLUDE_REQUIRED_PATTERN = "rerun_task_with_required_verdict_or_pattern"
 
 
 @dataclass
@@ -115,6 +119,8 @@ class Violation:
     agent: str
     rule: str
     detail: str
+    severity: str = VIOLATION_SEVERITY_BLOCKER
+    action_hint: str = ""
 
     def as_dict(self) -> dict:
         """Return a stable machine-readable representation."""
@@ -123,6 +129,8 @@ class Violation:
             "agent": self.agent,
             "rule": self.rule,
             "detail": self.detail,
+            "severity": self.severity,
+            "action_hint": self.action_hint,
         }
 
 
@@ -209,6 +217,7 @@ class ContractTracker:
                     f"Attendu >= 1 parmi {contract.required_tools_any}. "
                     f"Appeles : {sorted(tools_used) if tools_used else '(aucun)'}."
                 ),
+                action_hint=ACTION_HINT_USE_REQUIRED_TOOL,
             )
             self.violations.append(v)
             print(f"  [CONTRAT VIOLE] {task_name} ({agent}) : {v.detail}")
@@ -224,6 +233,7 @@ class ContractTracker:
                     f"Output trop court ({len(raw)} chars, "
                     f"minimum {contract.min_output_length})."
                 ),
+                action_hint=ACTION_HINT_EXPAND_OUTPUT,
             )
             self.violations.append(v)
             print(f"  [CONTRAT VIOLE] {task_name} ({agent}) : {v.detail}")
@@ -243,6 +253,7 @@ class ContractTracker:
                 f"Aucun pattern attendu dans l'output. "
                 f"Patterns : {contract.required_patterns}."
             ),
+            action_hint=ACTION_HINT_INCLUDE_REQUIRED_PATTERN,
         )
         self.violations.append(v)
         print(f"  [CONTRAT VIOLE] {task_name} ({agent}) : {v.detail}")

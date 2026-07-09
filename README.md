@@ -163,7 +163,8 @@ suivant prend le relais automatiquement.
   loguees via `ContractTracker` + etat de gouvernance final (`OK` ou
   `BLOCKED_CONTRACT_VIOLATIONS`). `--strict-contracts` retourne exit code 2
   en cas de blocage. `--governance-json` ecrit un rapport machine-readable
-  sous le projet. Pas de retry auto pour l'instant.
+  sous le projet. Les violations incluent une severite et une action corrective
+  future (`action_hint`). Pas de retry auto pour l'instant.
 - **Modes d'usage CLI** (Phase 1 §2 slice A) : `--mode read/edit/review/debug`
   adapte la composition du crew a la demande, evitant la sur-utilisation
   systematique du pipeline complet. Classifier automatique de mode prevu
@@ -312,7 +313,7 @@ AGENTIQUE/
 │   ├── test_phase0.py       # Validation statique Phase 0 (22/22)
 │   ├── test_resilience.py   # Tests unitaires resilience NIM §3/§3bis (31/31)
 │   ├── test_modes.py        # Tests unitaires modes d'usage Phase 1 §2 + garde JSON (33/33)
-│   ├── test_contracts.py    # Tests contrats + rapports gouvernance Phase 2 §A/§B (17/17)
+│   ├── test_contracts.py    # Tests contrats + rapports gouvernance Phase 2 §A/§B/§C (21/21)
 │   ├── test_tool_use.py     # Matrice tool use par modele NIM
 │   ├── tool_use_matrix.md   # Resultats de la matrice
 │   └── test_crewai_schema.py # Preuve du fix schemas CrewAI -> NIM (§0.c)
@@ -334,7 +335,8 @@ AGENTIQUE/
 - Les violations de contrat produisent maintenant un etat de gouvernance
   bloque (`BLOCKED_CONTRACT_VIOLATIONS`) et peuvent retourner exit code 2 avec
   `--strict-contracts`. Un rapport JSON peut etre ecrit avec
-  `--governance-json`, mais les violations ne declenchent pas encore de retry automatique.
+  `--governance-json`; elles incluent `severity` et `action_hint`, mais ne
+  declenchent pas encore de retry automatique.
 - `planning=True` et `memory=True` CrewAI restent desactives sur NIM
   (incompat documentee).
 - Le payload CrewAI gonfle tour apres tour (bytes x44 sur 5 tours ReAct du

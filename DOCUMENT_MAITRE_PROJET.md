@@ -761,6 +761,7 @@ Autrement dit :
 
 - **§A — État de gouvernance après contrats** : ✅ FAIT (2026-07-09). `ContractTracker` produit désormais un `GovernanceReport` final : `OK` sans violation, `BLOCKED_CONTRACT_VIOLATIONS` si un contrat est violé. Le CLI affiche toujours cet état après le résumé des contrats. `--strict-contracts` permet aux automatisations de retourner exit code 2 en cas de blocage, sans changer le comportement par défaut. Pas de retry automatique dans cette slice : l'objectif est de rendre l'état final non ambigu avant les boucles correctives Phase 2 suivantes.
 - **§B — Rapport de gouvernance JSON** : ✅ FAIT (2026-07-09). `ContractTracker` expose `governance_payload()`, `governance_json()` et `write_governance_json()`. Le CLI ajoute `--governance-json <chemin>` pour écrire un rapport machine-readable sous `--project`, avec garde-fou qui refuse les chemins hors projet. Cette slice trace l'état et les violations sans modifier la composition des agents, sans retry automatique et sans élargir les permissions.
+- **§C — Violations typées pour boucles correctives** : ✅ FAIT (2026-07-09). Les violations exposent maintenant `severity` (`blocker`) et `action_hint` (`rerun_task_with_required_tool`, `rerun_task_with_more_complete_output`, `rerun_task_with_required_verdict_or_pattern`). Le payload JSON conserve ces champs pour préparer les futures boucles de correction sans activer de retry automatique dans cette slice.
 - autoriser les interactions inter-agents utiles ;
 - les typer proprement ;
 - borner les boucles ;
@@ -835,7 +836,7 @@ Pour le développeur :
 - `scripts/test_phase0.py` — validation statique Phase 0 (22/22)
 - `scripts/test_resilience.py` — tests unitaires résilience NIM §3 + §3bis (31/31)
 - `scripts/test_modes.py` — tests unitaires modes d'usage Phase 1 §2 + garde chemin JSON (33/33)
-- `scripts/test_contracts.py` — tests contrats + rapports de gouvernance Phase 2 §A/§B (17/17)
+- `scripts/test_contracts.py` — tests contrats + rapports de gouvernance Phase 2 §A/§B/§C (21/21)
 - `test_phase0.bat` — lanceur Windows pour `test_phase0.py`
 
 **Scripts de diagnostic NIM (avec réseau, coûteux en tokens)**
@@ -857,6 +858,18 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 > Trace des modifications apportées au projet, conformément au protocole
 > (distinction repo modifié / prod alignée / validation réelle).
 > Les entrées les plus récentes sont en haut.
+
+### 2026-07-09 — Phase 2 §C / Violations typées
+
+- **Scope** : `crew/contracts.py`, `scripts/test_contracts.py`, `DOCUMENT_MAITRE_PROJET.md`, `README.md`.
+- **Motivation** : les rapports JSON de §B étaient structurés, mais les violations ne donnaient pas encore d'indication machine-readable sur leur criticité ni sur l'action corrective attendue. Pour préparer les boucles correctives Phase 2 sans les activer trop tôt, il faut typer ces signaux.
+- **Changement appliqué** : `Violation` expose `severity` (actuellement `blocker`) et `action_hint`. Les règles `required_tools`, `min_output_length` et `required_patterns` produisent respectivement `rerun_task_with_required_tool`, `rerun_task_with_more_complete_output` et `rerun_task_with_required_verdict_or_pattern`. `Violation.as_dict()` et donc le JSON de gouvernance conservent ces champs.
+- **Validation offline** : `test_phase0.py` 22/22 OK, `test_modes.py` 33/33 OK, `test_resilience.py` 31/31 OK, `test_contracts.py` 21/21 OK, `ruff check crew scripts` OK, `git diff --check` OK.
+- **Validation runtime NIM réelle** : non effectuée dans cette session; changement contrat/reporting uniquement.
+- **Repo modifié** : oui.
+- **Prod alignée** : N/A.
+- **Validation réelle effectuée** : oui pour validation offline automatisée; non pour runtime NIM.
+- **Commit** : *(ce commit).*
 
 ### 2026-07-09 — Phase 2 §B / Rapport de gouvernance JSON
 
