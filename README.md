@@ -33,8 +33,8 @@ contraintes de securite.
 | Phase | Sujet | Etat |
 |---|---|---|
 | **Phase 0** | Hardening fondations (shell, permissions, install determ.) | ✅ CLOTUREE |
-| **Phase 1** | Refactor protocole + contrats de sortie | 🔄 EN COURS (§0 ✅ tool use NIM, §1 ✅ contrats de sortie, §2 slice A ✅ modes CLI, §3 ✅ resilience NIM) |
-| Phase 2 | Cooperation multi-agent reelle | ⏳ a venir |
+| **Phase 1** | Refactor protocole + contrats de sortie | ✅ SOCLE STABILISE (§0 tool use NIM, §1 contrats, §2 modes CLI, §3 resilience NIM) |
+| **Phase 2** | Cooperation multi-agent reelle | 🔄 EN COURS (§A ✅ etat de gouvernance contrats) |
 | Phase 3 | Intelligence depot lourd | ⏳ a venir |
 | Phase 4 | Qualite produit | ⏳ a venir |
 | Phase 5 | Vers autonomie plus elevee | ⏳ a venir |
@@ -160,7 +160,9 @@ suivant prend le relais automatiquement.
 - **Contrats de sortie par task** (`crew/contracts.py`, Phase 1 §1) : chaque
   task a une contrainte minimale (outils requis, longueur output, patterns
   de sortie type `APPROVED|CHANGES_NEEDED` pour le Critic). Violations
-  loguees via `ContractTracker`, pas de retry auto (prevu Phase 2).
+  loguees via `ContractTracker` + etat de gouvernance final (`OK` ou
+  `BLOCKED_CONTRACT_VIOLATIONS`). `--strict-contracts` retourne exit code 2
+  en cas de blocage. Pas de retry auto pour l'instant.
 - **Modes d'usage CLI** (Phase 1 §2 slice A) : `--mode read/edit/review/debug`
   adapte la composition du crew a la demande, evitant la sur-utilisation
   systematique du pipeline complet. Classifier automatique de mode prevu
@@ -169,9 +171,9 @@ suivant prend le relais automatiquement.
   certaines limites NVIDIA NIM.
 
 Important : cette collaboration reste aujourd'hui insuffisamment gouvernee
-pour une vraie v1 pro. La Phase 2 introduira une couche de gouvernance,
-des interactions typees entre agents, et la validation technique integree
-avant reponse finale.
+pour une vraie v1 pro. La Phase 2 est ouverte par l'etat de gouvernance
+des contrats; elle doit encore introduire les interactions typees entre agents
+et la validation technique integree avant reponse finale.
 
 ---
 
@@ -260,6 +262,7 @@ python crew/crew.py "ta tache" --project C:/chemin/projet [options]
 | `--write`, `-w` | Active l'ecriture reelle de fichiers (ignore en `read` / `review`) |
 | `--allow-shell`, `-s` | Donne au Coder l'outil shell (shell=False, allowlist stricte) |
 | `--deep`, `-d` | Ajoute le Scanner |
+| `--strict-contracts` | Retourne exit code 2 si les contrats sont violes |
 | `--allow`, `-a` | Dossier supplementaire accessible |
 
 ### Validation runtime bornee
@@ -307,6 +310,7 @@ AGENTIQUE/
 │   ├── test_phase0.py       # Validation statique Phase 0 (22/22)
 │   ├── test_resilience.py   # Tests unitaires resilience NIM §3/§3bis (31/31)
 │   ├── test_modes.py        # Tests unitaires modes d'usage Phase 1 §2 (31/31)
+│   ├── test_contracts.py    # Tests contrats + etat de gouvernance Phase 2 §A (12/12)
 │   ├── test_tool_use.py     # Matrice tool use par modele NIM
 │   ├── tool_use_matrix.md   # Resultats de la matrice
 │   └── test_crewai_schema.py # Preuve du fix schemas CrewAI -> NIM (§0.c)
@@ -325,9 +329,9 @@ AGENTIQUE/
 
 - Le prototype reste sequentiel (`Process.sequential`). La cooperation
   multi-agent reelle et les boucles gouvernees sont prevues Phase 2.
-- Pas de retry automatique sur violation de contrat de sortie : les
-  violations sont loguees par `ContractTracker` mais la task suivante part
-  quand meme. Retry auto prevu Phase 2.
+- Les violations de contrat produisent maintenant un etat de gouvernance
+  bloque (`BLOCKED_CONTRACT_VIOLATIONS`) et peuvent retourner exit code 2 avec
+  `--strict-contracts`, mais elles ne declenchent pas encore de retry automatique.
 - `planning=True` et `memory=True` CrewAI restent desactives sur NIM
   (incompat documentee).
 - Le payload CrewAI gonfle tour apres tour (bytes x44 sur 5 tours ReAct du

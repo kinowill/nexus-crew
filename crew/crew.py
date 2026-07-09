@@ -1006,6 +1006,9 @@ def main():
                              "OFF par defaut.")
     parser.add_argument("--deep", "-d", action="store_true",
                         help="Active le mode Scanner + Researcher pour les gros projets")
+    parser.add_argument("--strict-contracts", action="store_true",
+                        help="Retourne exit code 2 si les contrats de sortie sont violés. "
+                             "Par défaut, les violations sont imprimées sans changer l'exit code.")
     parser.add_argument("--allow", "-a", action="append", default=[],
                         help="Dossier supplémentaire accessible (répétable). "
                              "Ex : --allow C:/autres/libs --allow D:/data")
@@ -1076,9 +1079,13 @@ def main():
     print("=" * 60)
     print(result)
 
-    # -- Contract validation report (Phase 1) --
+    # -- Contract validation report + governance state (Phase 1 -> Phase 2) --
     print()
     print(tracker.summary())
+    print(tracker.governance_summary())
+    governance_exit_code = tracker.exit_code(strict_contracts=args.strict_contracts)
+    if governance_exit_code:
+        sys.exit(governance_exit_code)
 
 
 if __name__ == "__main__":

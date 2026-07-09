@@ -16,6 +16,23 @@ from dataclasses import dataclass, field
 
 
 # ---------------------------------------------------------------------------
+# Governance status
+# ---------------------------------------------------------------------------
+
+GOVERNANCE_OK = "OK"
+GOVERNANCE_BLOCKED_CONTRACT_VIOLATIONS = "BLOCKED_CONTRACT_VIOLATIONS"
+CONTRACT_BLOCK_EXIT_CODE = 2
+
+
+@dataclass
+class GovernanceReport:
+    """Final governance state produced after contract validation."""
+    status: str
+    violations_count: int
+    should_block: bool
+
+
+# ---------------------------------------------------------------------------
 # Contract definitions
 # ---------------------------------------------------------------------------
 
@@ -233,3 +250,38 @@ class ContractTracker:
 
     def has_violations(self) -> bool:
         return len(self.violations) > 0
+
+    def governance_report(self) -> GovernanceReport:
+        """Return the final governance state for the run."""
+        if self.has_violations():
+            return GovernanceReport(
+                status=GOVERNANCE_BLOCKED_CONTRACT_VIOLATIONS,
+                violations_count=len(self.violations),
+                should_block=True,
+            )
+        return GovernanceReport(
+            status=GOVERNANCE_OK,
+            violations_count=0,
+            should_block=False,
+        )
+
+    def governance_summary(self) -> str:
+        """Return a human-readable governance summary for the user/CLI."""
+        report = self.governance_report()
+        if report.should_block:
+            return (
+                f"[GOUVERNANCE] {report.status} - "
+                f"{report.violations_count} violation(s) de contrat detectee(s). "
+                "Le resultat doit etre traite comme bloque jusqu'a correction ou validation humaine."
+            )
+        return "[GOUVERNANCE] OK - aucun blocage contractuel detecte."
+
+    def should_block(self) -> bool:
+        """Whether automation should treat this run as blocked."""
+        return self.governance_report().should_block
+
+    def exit_code(self, strict_contracts: bool = False) -> int:
+        """Return the CLI exit code implied by governance policy."""
+        if strict_contracts and self.should_block():
+            return CONTRACT_BLOCK_EXIT_CODE
+        return 0

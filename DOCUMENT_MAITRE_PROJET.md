@@ -759,6 +759,7 @@ Autrement dit :
 
 ### Phase 2 - Coopération multi-agent réelle
 
+- **§A — État de gouvernance après contrats** : ✅ FAIT (2026-07-09). `ContractTracker` produit désormais un `GovernanceReport` final : `OK` sans violation, `BLOCKED_CONTRACT_VIOLATIONS` si un contrat est violé. Le CLI affiche toujours cet état après le résumé des contrats. `--strict-contracts` permet aux automatisations de retourner exit code 2 en cas de blocage, sans changer le comportement par défaut. Pas de retry automatique dans cette slice : l'objectif est de rendre l'état final non ambigu avant les boucles correctives Phase 2 suivantes.
 - autoriser les interactions inter-agents utiles ;
 - les typer proprement ;
 - borner les boucles ;
@@ -833,6 +834,7 @@ Pour le développeur :
 - `scripts/test_phase0.py` — validation statique Phase 0 (22/22)
 - `scripts/test_resilience.py` — tests unitaires résilience NIM §3 + §3bis (31/31)
 - `scripts/test_modes.py` — tests unitaires modes d'usage Phase 1 §2 (31/31)
+- `scripts/test_contracts.py` — tests contrats + état de gouvernance Phase 2 §A (12/12)
 - `test_phase0.bat` — lanceur Windows pour `test_phase0.py`
 
 **Scripts de diagnostic NIM (avec réseau, coûteux en tokens)**
@@ -854,6 +856,19 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 > Trace des modifications apportées au projet, conformément au protocole
 > (distinction repo modifié / prod alignée / validation réelle).
 > Les entrées les plus récentes sont en haut.
+
+### 2026-07-09 — Phase 2 §A / État de gouvernance après contrats
+
+- **Scope** : `crew/contracts.py`, `crew/crew.py`, `scripts/test_contracts.py`, `README.md`, `DOCUMENT_MAITRE_PROJET.md`.
+- **Motivation** : Phase 1 détectait les violations de contrat mais les laissait seulement comme logs. Pour ouvrir Phase 2 sans refonte lourde, il fallait rendre l'état final exploitable par un humain et par l'automatisation.
+- **Changement appliqué** : `ContractTracker` expose désormais `governance_report()`, `governance_summary()` et `should_block()`. Deux états existent : `OK` et `BLOCKED_CONTRACT_VIOLATIONS`. Le CLI imprime toujours l'état de gouvernance après le résumé des contrats. Nouveau flag `--strict-contracts` : si un contrat est violé, le run retourne exit code 2; par défaut, l'exit code historique reste inchangé pour éviter une régression.
+- **Tests ajoutés** : `scripts/test_contracts.py` couvre le cas OK, le cas bloqué, le comptage de violations, le résumé de gouvernance, un verdict `CHANGES_NEEDED` valide et l'ignorance des tasks non enregistrées.
+- **Validation offline** : `test_phase0.py` 22/22 OK, `test_modes.py` 31/31 OK, `test_resilience.py` 31/31 OK, `test_contracts.py` 12/12 OK, `ruff check crew scripts` OK, `git diff --check` OK.
+- **Validation runtime NIM réelle** : non effectuée dans cette session. Le changement est couvert offline et ne modifie pas la composition des agents ni les appels LLM.
+- **Repo modifié** : oui.
+- **Prod alignée** : N/A.
+- **Validation réelle effectuée** : oui pour validation offline automatisée; non pour runtime NIM.
+- **Commit** : *(ce commit local, non poussé).*
 
 ### 2026-07-09 — Phase 0 dette shell Windows : parsing chemins absolus corrige
 
