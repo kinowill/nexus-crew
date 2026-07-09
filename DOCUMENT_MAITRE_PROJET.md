@@ -760,6 +760,7 @@ Autrement dit :
 ### Phase 2 - Coopération multi-agent réelle
 
 - **§A — État de gouvernance après contrats** : ✅ FAIT (2026-07-09). `ContractTracker` produit désormais un `GovernanceReport` final : `OK` sans violation, `BLOCKED_CONTRACT_VIOLATIONS` si un contrat est violé. Le CLI affiche toujours cet état après le résumé des contrats. `--strict-contracts` permet aux automatisations de retourner exit code 2 en cas de blocage, sans changer le comportement par défaut. Pas de retry automatique dans cette slice : l'objectif est de rendre l'état final non ambigu avant les boucles correctives Phase 2 suivantes.
+- **§B — Rapport de gouvernance JSON** : ✅ FAIT (2026-07-09). `ContractTracker` expose `governance_payload()`, `governance_json()` et `write_governance_json()`. Le CLI ajoute `--governance-json <chemin>` pour écrire un rapport machine-readable sous `--project`, avec garde-fou qui refuse les chemins hors projet. Cette slice trace l'état et les violations sans modifier la composition des agents, sans retry automatique et sans élargir les permissions.
 - autoriser les interactions inter-agents utiles ;
 - les typer proprement ;
 - borner les boucles ;
@@ -833,8 +834,8 @@ Pour le développeur :
 **Scripts de validation / diagnostic (offline, sans réseau)**
 - `scripts/test_phase0.py` — validation statique Phase 0 (22/22)
 - `scripts/test_resilience.py` — tests unitaires résilience NIM §3 + §3bis (31/31)
-- `scripts/test_modes.py` — tests unitaires modes d'usage Phase 1 §2 (31/31)
-- `scripts/test_contracts.py` — tests contrats + état de gouvernance Phase 2 §A (12/12)
+- `scripts/test_modes.py` — tests unitaires modes d'usage Phase 1 §2 + garde chemin JSON (33/33)
+- `scripts/test_contracts.py` — tests contrats + rapports de gouvernance Phase 2 §A/§B (17/17)
 - `test_phase0.bat` — lanceur Windows pour `test_phase0.py`
 
 **Scripts de diagnostic NIM (avec réseau, coûteux en tokens)**
@@ -857,6 +858,19 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 > (distinction repo modifié / prod alignée / validation réelle).
 > Les entrées les plus récentes sont en haut.
 
+### 2026-07-09 — Phase 2 §B / Rapport de gouvernance JSON
+
+- **Scope** : `crew/contracts.py`, `crew/crew.py`, `scripts/test_contracts.py`, `scripts/test_modes.py`, `README.md`, `DOCUMENT_MAITRE_PROJET.md`.
+- **Motivation** : après l'état `OK` / `BLOCKED_CONTRACT_VIOLATIONS`, la gouvernance devait devenir traçable par une automatisation ou une session longue, sans dépendre d'un résumé texte.
+- **Changement appliqué** : `Violation.as_dict()`, `ContractTracker.governance_payload()`, `governance_json()` et `write_governance_json()` fournissent un payload stable (`status`, `should_block`, `violations_count`, `exit_code`, `strict_contracts`, `violations`). Le CLI ajoute `--governance-json <chemin>` pour écrire ce rapport sous le projet. Les chemins absolus hors `--project` sont refusés.
+- **Tests ajoutés** : `test_contracts.py` couvre payload dict, JSON parsable et écriture fichier temporaire; `test_modes.py` couvre le garde-fou de chemin relatif accepté / chemin hors projet refusé.
+- **Validation offline** : `test_phase0.py` 22/22 OK, `test_modes.py` 33/33 OK, `test_resilience.py` 31/31 OK, `test_contracts.py` 17/17 OK, `ruff check crew scripts` OK, `git diff --check` OK.
+- **Validation runtime NIM réelle** : non effectuée dans cette session; changement CLI/contrats offline uniquement, sans nouvel appel LLM.
+- **Repo modifié** : oui.
+- **Prod alignée** : N/A.
+- **Validation réelle effectuée** : oui pour validation offline automatisée; non pour runtime NIM.
+- **Commit** : *(ce commit).*
+
 ### 2026-07-09 — Phase 2 §A / État de gouvernance après contrats
 
 - **Scope** : `crew/contracts.py`, `crew/crew.py`, `scripts/test_contracts.py`, `README.md`, `DOCUMENT_MAITRE_PROJET.md`.
@@ -868,7 +882,7 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 - **Repo modifié** : oui.
 - **Prod alignée** : N/A.
 - **Validation réelle effectuée** : oui pour validation offline automatisée; non pour runtime NIM.
-- **Commit** : *(ce commit local, non poussé).*
+- **Commit** : `6ff08cd` (poussé sur `origin/main`).
 
 ### 2026-07-09 — Phase 0 dette shell Windows : parsing chemins absolus corrige
 

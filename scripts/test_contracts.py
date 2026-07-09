@@ -8,8 +8,10 @@ Usage :
 Offline : pas de CrewAI, pas de LLM, pas de reseau.
 """
 
+import json
 import importlib.util
 import sys
+import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -88,6 +90,19 @@ check(
     str(bad_tracker.exit_code(True)),
 )
 check("exit code : strict sans violation reste a 0", tracker.exit_code(True) == 0)
+payload = bad_tracker.governance_payload(strict_contracts=True)
+check("payload : status stable", payload["status"] == GOVERNANCE_BLOCKED_CONTRACT_VIOLATIONS)
+check("payload : violations serialisees", len(payload["violations"]) == 2)
+check("payload : premiere violation detaillee", payload["violations"][0]["rule"] == "required_tools")
+json_payload = json.loads(bad_tracker.governance_json(strict_contracts=True))
+check("json : payload parsable", json_payload["exit_code"] == CONTRACT_BLOCK_EXIT_CODE)
+with tempfile.TemporaryDirectory() as tmpdir:
+    output_path = bad_tracker.write_governance_json(
+        Path(tmpdir) / "governance.json",
+        strict_contracts=True,
+    )
+    written_payload = json.loads(output_path.read_text(encoding="utf-8"))
+check("json file : rapport ecrit", written_payload["violations_count"] == 2)
 
 
 # -- Review contract accepts either expected verdict ------------------------

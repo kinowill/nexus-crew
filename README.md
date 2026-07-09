@@ -154,7 +154,7 @@ suivant prend le relais automatiquement.
 
 ## Collaboration Actuelle
 
-- `allow_delegation=False` sur tous les agents tant que la gouvernance Phase 2 n'existe pas.
+- `allow_delegation=False` sur tous les agents tant que la gouvernance d'interactions Phase 2 n'existe pas.
 - Cache LiteLLM disk sur `.crew_cache/` quand l'environnement le supporte.
 - Boucle `Critic -> Coder` via `rework_task` en modes `edit` / `debug`.
 - **Contrats de sortie par task** (`crew/contracts.py`, Phase 1 §1) : chaque
@@ -162,7 +162,8 @@ suivant prend le relais automatiquement.
   de sortie type `APPROVED|CHANGES_NEEDED` pour le Critic). Violations
   loguees via `ContractTracker` + etat de gouvernance final (`OK` ou
   `BLOCKED_CONTRACT_VIOLATIONS`). `--strict-contracts` retourne exit code 2
-  en cas de blocage. Pas de retry auto pour l'instant.
+  en cas de blocage. `--governance-json` ecrit un rapport machine-readable
+  sous le projet. Pas de retry auto pour l'instant.
 - **Modes d'usage CLI** (Phase 1 §2 slice A) : `--mode read/edit/review/debug`
   adapte la composition du crew a la demande, evitant la sur-utilisation
   systematique du pipeline complet. Classifier automatique de mode prevu
@@ -263,6 +264,7 @@ python crew/crew.py "ta tache" --project C:/chemin/projet [options]
 | `--allow-shell`, `-s` | Donne au Coder l'outil shell (shell=False, allowlist stricte) |
 | `--deep`, `-d` | Ajoute le Scanner |
 | `--strict-contracts` | Retourne exit code 2 si les contrats sont violes |
+| `--governance-json` | Ecrit un rapport JSON de gouvernance sous le projet |
 | `--allow`, `-a` | Dossier supplementaire accessible |
 
 ### Validation runtime bornee
@@ -309,8 +311,8 @@ AGENTIQUE/
 │   ├── discover_models.py   # Inventaire modele NIM
 │   ├── test_phase0.py       # Validation statique Phase 0 (22/22)
 │   ├── test_resilience.py   # Tests unitaires resilience NIM §3/§3bis (31/31)
-│   ├── test_modes.py        # Tests unitaires modes d'usage Phase 1 §2 (31/31)
-│   ├── test_contracts.py    # Tests contrats + etat de gouvernance Phase 2 §A (12/12)
+│   ├── test_modes.py        # Tests unitaires modes d'usage Phase 1 §2 + garde JSON (33/33)
+│   ├── test_contracts.py    # Tests contrats + rapports gouvernance Phase 2 §A/§B (17/17)
 │   ├── test_tool_use.py     # Matrice tool use par modele NIM
 │   ├── tool_use_matrix.md   # Resultats de la matrice
 │   └── test_crewai_schema.py # Preuve du fix schemas CrewAI -> NIM (§0.c)
@@ -331,7 +333,8 @@ AGENTIQUE/
   multi-agent reelle et les boucles gouvernees sont prevues Phase 2.
 - Les violations de contrat produisent maintenant un etat de gouvernance
   bloque (`BLOCKED_CONTRACT_VIOLATIONS`) et peuvent retourner exit code 2 avec
-  `--strict-contracts`, mais elles ne declenchent pas encore de retry automatique.
+  `--strict-contracts`. Un rapport JSON peut etre ecrit avec
+  `--governance-json`, mais les violations ne declenchent pas encore de retry automatique.
 - `planning=True` et `memory=True` CrewAI restent desactives sur NIM
   (incompat documentee).
 - Le payload CrewAI gonfle tour apres tour (bytes x44 sur 5 tours ReAct du

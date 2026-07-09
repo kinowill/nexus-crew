@@ -34,6 +34,7 @@ from crew.crew import (  # noqa: E402
     build_crew,
     VALID_MODES,
     DEFAULT_MODE,
+    _resolve_governance_json_path,
 )
 from contracts import ContractTracker  # noqa: E402
 
@@ -70,6 +71,20 @@ check(
 )
 
 
+# ─── Gouvernance JSON path guard ─────────────────────────────────────────────
+relative_governance_path = _resolve_governance_json_path(ROOT, "reports/governance.json")
+check(
+    "governance json : chemin relatif reste dans le projet",
+    ROOT.resolve() in relative_governance_path.parents,
+    str(relative_governance_path),
+)
+try:
+    _resolve_governance_json_path(ROOT, str(ROOT.parent / "outside.json"))
+    check("governance json : chemin hors projet refuse", False, "pas d'exception")
+except ValueError:
+    check("governance json : chemin hors projet refuse", True)
+except Exception as e:
+    check("governance json : chemin hors projet refuse", False, f"{type(e).__name__}: {e}")
 # ─── mode = "read" ───────────────────────────────────────────────────────────
 tracker = ContractTracker()
 crew = build_crew("explique ce projet", ROOT, deep=False,

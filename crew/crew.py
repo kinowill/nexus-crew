@@ -752,6 +752,22 @@ def make_scanner() -> Agent:
 #             review standalone + final).
 #  - debug  : investigation + correction (alias de edit pour l'instant,
 #             differenciation produit prevue Phase 2).
+
+
+def _resolve_governance_json_path(project_path: Path, target: str) -> Path:
+    """Resolve a governance JSON output path inside the project root."""
+    output_path = Path(target)
+    full = (
+        output_path.resolve()
+        if output_path.is_absolute()
+        else (project_path / output_path).resolve()
+    )
+    project_root = project_path.resolve()
+    if full != project_root and project_root not in full.parents:
+        raise ValueError("governance json path must stay inside --project")
+    return full
+
+
 VALID_MODES = ("read", "edit", "review", "debug")
 DEFAULT_MODE = "edit"
 
@@ -1009,6 +1025,8 @@ def main():
     parser.add_argument("--strict-contracts", action="store_true",
                         help="Retourne exit code 2 si les contrats de sortie sont violés. "
                              "Par défaut, les violations sont imprimées sans changer l'exit code.")
+    parser.add_argument("--governance-json",
+                        help="Ecrit le rapport de gouvernance JSON dans un chemin sous --project.")
     parser.add_argument("--allow", "-a", action="append", default=[],
                         help="Dossier supplémentaire accessible (répétable). "
                              "Ex : --allow C:/autres/libs --allow D:/data")
@@ -1083,6 +1101,17 @@ def main():
     print()
     print(tracker.summary())
     print(tracker.governance_summary())
+    if args.governance_json:
+        try:
+            governance_path = _resolve_governance_json_path(project_path, args.governance_json)
+            tracker.write_governance_json(
+                governance_path,
+                strict_contracts=args.strict_contracts,
+            )
+            print(f"[GOUVERNANCE] rapport JSON ecrit : {governance_path}")
+        except Exception as e:
+            print(f"ERREUR : impossible d'ecrire le rapport de gouvernance JSON : {e}")
+            sys.exit(1)
     governance_exit_code = tracker.exit_code(strict_contracts=args.strict_contracts)
     if governance_exit_code:
         sys.exit(governance_exit_code)

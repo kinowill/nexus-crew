@@ -11,8 +11,10 @@ No automatic retry yet (planned for Phase 2).
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
 
 
 # ---------------------------------------------------------------------------
@@ -113,6 +115,15 @@ class Violation:
     agent: str
     rule: str
     detail: str
+
+    def as_dict(self) -> dict:
+        """Return a stable machine-readable representation."""
+        return {
+            "task_name": self.task_name,
+            "agent": self.agent,
+            "rule": self.rule,
+            "detail": self.detail,
+        }
 
 
 def _extract_tools_from_messages(messages: list) -> set[str]:
@@ -285,3 +296,35 @@ class ContractTracker:
         if strict_contracts and self.should_block():
             return CONTRACT_BLOCK_EXIT_CODE
         return 0
+
+    def governance_payload(self, strict_contracts: bool = False) -> dict:
+        """Return a stable JSON-ready governance payload."""
+        report = self.governance_report()
+        return {
+            "status": report.status,
+            "should_block": report.should_block,
+            "violations_count": report.violations_count,
+            "exit_code": self.exit_code(strict_contracts=strict_contracts),
+            "strict_contracts": strict_contracts,
+            "violations": [violation.as_dict() for violation in self.violations],
+        }
+
+    def governance_json(self, strict_contracts: bool = False) -> str:
+        """Return the governance payload as deterministic JSON."""
+        return json.dumps(
+            self.governance_payload(strict_contracts=strict_contracts),
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        )
+
+    def write_governance_json(self, path: str | Path,
+                              strict_contracts: bool = False) -> Path:
+        """Write the governance payload to disk and return the path."""
+        output_path = Path(path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(
+            self.governance_json(strict_contracts=strict_contracts) + "\n",
+            encoding="utf-8",
+        )
+        return output_path
