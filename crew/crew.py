@@ -551,6 +551,33 @@ SHELL_ALLOWLIST = {
 SHELL_FORBIDDEN_META = ["|", ";", "&&", "||", ">", "<", "`", "$(", ">>", "<<"]
 
 
+def _split_shell_command(command: str) -> list[str]:
+    """Split a single command while preserving native Windows paths."""
+    if not command.strip():
+        return []
+    if os.name == "nt":
+        import ctypes
+
+        argc = ctypes.c_int()
+        shell32 = ctypes.windll.shell32
+        kernel32 = ctypes.windll.kernel32
+        shell32.CommandLineToArgvW.argtypes = [ctypes.c_wchar_p, ctypes.POINTER(ctypes.c_int)]
+        shell32.CommandLineToArgvW.restype = ctypes.POINTER(ctypes.c_wchar_p)
+        kernel32.LocalFree.argtypes = [ctypes.c_void_p]
+        kernel32.LocalFree.restype = ctypes.c_void_p
+
+        argv_ptr = shell32.CommandLineToArgvW(command, ctypes.byref(argc))
+        if not argv_ptr:
+            raise ValueError("CommandLineToArgvW failed")
+        try:
+            return [argv_ptr[i] for i in range(argc.value)]
+        finally:
+            kernel32.LocalFree(argv_ptr)
+
+    import shlex
+    return shlex.split(command, posix=True)
+
+
 @tool("run_shell")
 def run_shell_tool(command: str) -> str:
     """Exécute une commande dans le projet (shell=False, allowlist stricte, timeout 120s).
@@ -559,7 +586,6 @@ def run_shell_tool(command: str) -> str:
     Binaires autorisés : python, pytest, node, npm, pnpm, git, grep, rg,
     ls, cat, head, tail, cargo, go, make, echo, etc. (voir SHELL_ALLOWLIST).
     """
-    import shlex
 
     # 1. Refuser tout metacaractere shell (chainage, redirection, subst).
     for meta in SHELL_FORBIDDEN_META:
@@ -571,7 +597,7 @@ def run_shell_tool(command: str) -> str:
 
     # 2. Parser proprement en argv.
     try:
-        argv = shlex.split(command, posix=True)
+        argv = _split_shell_command(command)
     except ValueError as e:
         return f"[REFUSE] Parsing commande invalide : {e}"
     if not argv:

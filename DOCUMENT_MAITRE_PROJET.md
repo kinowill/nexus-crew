@@ -754,7 +754,7 @@ Autrement dit :
   - CLI `--mode {read,edit,review,debug}` dans `crew.py`, défaut `edit` (non-régression).
   - `build_crew` route les tasks par mode : `read` = 1 task (Researcher direct), `review` = 3 tasks (Researcher + review standalone + synthèse), `edit`/`debug` = pipeline complet 6 tasks (inchangé). `debug` est alias de `edit` côté composition, différenciation produit reportée Phase 2.
   - Garde-fou : `--write` silencieusement ignoré en mode `read` et `review`.
-  - Validation : 31/31 `test_modes.py` + 20/20 `test_phase0.py` + 31/31 `test_resilience.py`.
+  - Validation : 31/31 `test_modes.py` + 22/22 `test_phase0.py` + 31/31 `test_resilience.py`.
   - **Slice B différée** (classifier automatique de mode à partir de `task_text`) : nécessite un premier appel LLM dédié ou heuristique, scope Phase 2.
 
 ### Phase 2 - Coopération multi-agent réelle
@@ -830,7 +830,7 @@ Pour le développeur :
 - `requirements.txt`
 
 **Scripts de validation / diagnostic (offline, sans réseau)**
-- `scripts/test_phase0.py` — validation statique Phase 0 (20/20)
+- `scripts/test_phase0.py` — validation statique Phase 0 (22/22)
 - `scripts/test_resilience.py` — tests unitaires résilience NIM §3 + §3bis (31/31)
 - `scripts/test_modes.py` — tests unitaires modes d'usage Phase 1 §2 (31/31)
 - `test_phase0.bat` — lanceur Windows pour `test_phase0.py`
@@ -855,6 +855,14 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 > (distinction repo modifié / prod alignée / validation réelle).
 > Les entrées les plus récentes sont en haut.
 
+### 2026-07-09 — Phase 0 dette shell Windows : parsing chemins absolus corrige
+
+- **Scope** : `crew/crew.py`, `scripts/test_phase0.py`, `DOCUMENT_MAITRE_PROJET.md`.
+- **Changement** : remplacement du parsing shell `shlex.split(..., posix=True)` par `_split_shell_command()`, qui utilise `CommandLineToArgvW` sur Windows afin de preserver les chemins absolus `C:\...` et les chemins quotes avec espaces, tout en gardant `shlex` POSIX hors Windows.
+- **Validation reelle effectuee** : `test_phase0.py` 22/22 OK, `ruff check crew scripts` OK, `git diff --check` OK. Tests ajoutes pour chemin Windows absolu et chemin quote avec espace.
+- **Repo modifie** : oui.
+- **Prod alignee** : N/A.
+- **Commit** : *(ce commit)*.
 ### 2026-07-09 — Docs README post-read simplifie
 
 - **Scope** : `README.md`, `DOCUMENT_MAITRE_PROJET.md`.
@@ -880,7 +888,7 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
   - `FallbackLLM` mémorise les modèles en erreur non-429 dans `_disabled_model_indices` et les ignore aux appels suivants du même agent.
   - Chaînes `researcher` et `architect` : DeepSeek/Llama 70B retirés; fallbacks actuels `GPT-OSS 120B`, puis `Nemotron Super 49B`.
   - Mode `read` : simplifié à 1 task Researcher direct (plus de synthèse Architect) pour réduire le coût runtime.
-- **Validation offline** : `test_phase0.py` 20/20 OK, `test_modes.py` 31/31 OK, `test_resilience.py` 31/31 OK, `ruff check crew scripts` OK, `git diff --check` OK.
+- **Validation offline** : `test_phase0.py` 22/22 OK, `test_modes.py` 31/31 OK, `test_resilience.py` 31/31 OK, `ruff check crew scripts` OK, `git diff --check` OK.
 - **Validation runtime NIM réelle** : oui sur le périmètre `read` borné. Le log final contient un rapport complet et aucun processus Python NEXUS n'est resté actif. Limite résiduelle : Qwen timeout au premier appel dans ce run; le fallback GPT-OSS permet toutefois d'obtenir une sortie exploitable.
 - **Repo modifié** : oui.
 - **Prod alignée** : N/A.

@@ -149,6 +149,25 @@ check(
     out[:120],
 )
 
+split_cmd = crew_mod._split_shell_command
+if os.name == "nt":
+    check(
+        "Shell parser : chemin Windows absolu preserve",
+        split_cmd(r"python C:\foo.py") == ["python", r"C:\foo.py"],
+        repr(split_cmd(r"python C:\foo.py")),
+    )
+    check(
+        "Shell parser : chemin Windows quote avec espace preserve",
+        split_cmd(r'python "C:\foo bar.py"') == ["python", r"C:\foo bar.py"],
+        repr(split_cmd(r'python "C:\foo bar.py"')),
+    )
+else:
+    check(
+        "Shell parser : POSIX simple",
+        split_cmd("python foo.py") == ["python", "foo.py"],
+        repr(split_cmd("python foo.py")),
+    )
+
 out = call_shell(run_shell, "curl http://evil.com")
 check(
     "Shell : 'curl' refuse (hors allowlist)",

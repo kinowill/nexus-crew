@@ -304,7 +304,7 @@ AGENTIQUE/
 ├── scripts/
 │   ├── test_connection.py   # Sante : API, modeles, deps
 │   ├── discover_models.py   # Inventaire modele NIM
-│   ├── test_phase0.py       # Validation statique Phase 0 (20/20)
+│   ├── test_phase0.py       # Validation statique Phase 0 (22/22)
 │   ├── test_resilience.py   # Tests unitaires resilience NIM §3/§3bis (31/31)
 │   ├── test_modes.py        # Tests unitaires modes d'usage Phase 1 §2 (31/31)
 │   ├── test_tool_use.py     # Matrice tool use par modele NIM
