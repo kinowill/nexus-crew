@@ -23,7 +23,7 @@ ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
 # crew/crew.py fait `from contracts import ContractTracker` en import implicite.
-import importlib.util as _ilu
+import importlib.util as _ilu  # noqa: E402
 _spec = _ilu.spec_from_file_location("contracts", ROOT / "crew" / "contracts.py")
 _mod = _ilu.module_from_spec(_spec)
 sys.modules["contracts"] = _mod
@@ -33,10 +33,13 @@ _spec.loader.exec_module(_mod)
 os.environ.setdefault("CREW_PROJECT", str(ROOT))
 
 from crew.crew import (  # noqa: E402
+    FallbackLLM,
     _is_rate_limit_error,
     _output_looks_malformed,
+    _resolve_llm_timeout_seconds,
     MALFORMED_SHORT_TEXT_MAX,
     RATE_LIMIT_BACKOFFS,
+    LLM_TIMEOUT_SECONDS,
 )
 
 results: list[tuple[str, bool, str]] = []
@@ -197,9 +200,82 @@ check(
     isinstance(RATE_LIMIT_BACKOFFS, list) and len(RATE_LIMIT_BACKOFFS) > 0,
 )
 check(
+    "config : LLM_TIMEOUT_SECONDS raisonnable (30-180)",
+    30 <= LLM_TIMEOUT_SECONDS <= 180,
+    f"val={LLM_TIMEOUT_SECONDS}",
+)
+check(
+    "config : timeout override env applique",
+    (os.environ.__setitem__("NEXUS_LLM_TIMEOUT_SECONDS", "30")
+     or _resolve_llm_timeout_seconds() == 30),
+    f"val={_resolve_llm_timeout_seconds()}",
+)
+os.environ.pop("NEXUS_LLM_TIMEOUT_SECONDS", None)
+check(
+    "config : timeout override invalide retombe sur defaut",
+    (os.environ.__setitem__("NEXUS_LLM_TIMEOUT_SECONDS", "abc")
+     or _resolve_llm_timeout_seconds() == LLM_TIMEOUT_SECONDS),
+    f"val={_resolve_llm_timeout_seconds()}",
+)
+os.environ.pop("NEXUS_LLM_TIMEOUT_SECONDS", None)
+check(
     "config : MALFORMED_SHORT_TEXT_MAX raisonnable (100-500)",
     100 <= MALFORMED_SHORT_TEXT_MAX <= 500,
     f"val={MALFORMED_SHORT_TEXT_MAX}",
+)
+
+# --- FallbackLLM.call : independent malformed retry budgets ---
+class _FakeLLM:
+    def __init__(self, outputs):
+        self.outputs = list(outputs)
+        self.calls = 0
+
+    def call(self, **_kwargs):
+        self.calls += 1
+        if not self.outputs:
+            raise AssertionError("Fake LLM called too many times")
+        return self.outputs.pop(0)
+
+
+def _fake_fallback(outputs):
+    llm = FallbackLLM(["openai/test-model"])
+    fake = _FakeLLM(outputs)
+    object.__setattr__(llm, "_llms", [fake])
+    object.__setattr__(llm, "_chain", ["openai/test-model"])
+    return llm, fake
+
+
+timeout_llm = FallbackLLM(["openai/test-model"])
+check(
+    "fallback : timeout configure sur les LLM internes",
+    all(
+        getattr(inner, "timeout", None) == LLM_TIMEOUT_SECONDS
+        for inner in timeout_llm._llms
+    ),
+    f"timeouts={[getattr(inner, 'timeout', None) for inner in timeout_llm._llms]}",
+)
+os.environ["NEXUS_LLM_TIMEOUT_SECONDS"] = "30"
+timeout_override_llm = FallbackLLM(["openai/test-model"])
+check(
+    "fallback : timeout override configure sur les LLM internes",
+    all(getattr(inner, "timeout", None) == 30 for inner in timeout_override_llm._llms),
+    f"timeouts={[getattr(inner, 'timeout', None) for inner in timeout_override_llm._llms]}",
+)
+os.environ.pop("NEXUS_LLM_TIMEOUT_SECONDS", None)
+
+retry_llm, retry_fake = _fake_fallback([
+    "<tool_call>{\"name\":\"read_file\"}</tool_call>",
+    "Je vais lire le README avant de repondre.",
+    "Synthese valide apres deux retries distincts.",
+])
+retry_out = retry_llm.call(
+    messages=[{"role": "user", "content": "Lis README.md"}],
+    tools=[{"type": "function", "function": {"name": "read_file"}}],
+)
+check(
+    "fallback : XML Hermes puis intention courte consomment deux retries distincts",
+    retry_out == "Synthese valide apres deux retries distincts." and retry_fake.calls == 3,
+    f"out={retry_out!r} calls={retry_fake.calls}",
 )
 
 

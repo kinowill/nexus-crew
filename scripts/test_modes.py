@@ -22,7 +22,7 @@ from pathlib import Path
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
-import importlib.util as _ilu
+import importlib.util as _ilu  # noqa: E402
 _spec = _ilu.spec_from_file_location("contracts", ROOT / "crew" / "contracts.py")
 _mod = _ilu.module_from_spec(_spec)
 sys.modules["contracts"] = _mod

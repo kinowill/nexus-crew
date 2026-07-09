@@ -185,7 +185,7 @@ def main():
     print("  Matrice tool use NVIDIA NIM")
     print("=" * 70)
     print(f"  {len(ALL_MODELS)} modeles uniques a tester (sequentiel)")
-    print(f"  Tool : get_weather(city) | Prompt : meteo Paris")
+    print("  Tool : get_weather(city) | Prompt : meteo Paris")
     print()
 
     results: list[tuple[str, str, str]] = []  # (model, category, note)
@@ -244,7 +244,7 @@ def main():
     md_path = ROOT / "scripts" / "tool_use_matrix.md"
     today = datetime.now().strftime("%Y-%m-%d")
     lines = [
-        f"# Matrice tool use NIM",
+        "# Matrice tool use NIM",
         "",
         f"Genere le {today} par `scripts/test_tool_use.py`.",
         "",

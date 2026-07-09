@@ -748,12 +748,13 @@ Autrement dit :
   - Retry-1 sur sortie XML Hermes quand des tools ont été fournis (traite variance Kimi K2 ~10 %).
   - Logs opt-in via `NEXUS_DEBUG_LLM=1` (model / rl_try / msgs / bytes / tools / roles).
   - Validation : 6 mock tests + 13 unit tests OK. **Runtime NIM réel non encore observé**, prévu dans une session instrumentée dédiée.
+  - **§3bis — retry budget épuisable + timeout LLM** : ✅ FAIT (2026-07-09). `_malformed_output_kind()` distingue `xml_hermes` et `intention_0_tools`; `FallbackLLM.call()` autorise désormais un retry par type de sortie cassée sur le même modèle, avec log désambiguïsé. `LLM_TIMEOUT_SECONDS = 90` borne aussi chaque appel modèle avant fallback chain; `NEXUS_LLM_TIMEOUT_SECONDS` permet de descendre temporairement à 30-45s pour les validations Codex courtes.
 - introduire une couche de gouvernance ;
 - **§2 — Séparer les modes `read`, `edit`, `review`, `debug`** : ✅ SLICE A FAITE (2026-04-20).
   - CLI `--mode {read,edit,review,debug}` dans `crew.py`, défaut `edit` (non-régression).
   - `build_crew` route les tasks par mode : `read` = 2 tasks (Researcher + synthèse Architect), `review` = 3 tasks (Researcher + review standalone + synthèse), `edit`/`debug` = pipeline complet 6 tasks (inchangé). `debug` est alias de `edit` côté composition, différenciation produit reportée Phase 2.
   - Garde-fou : `--write` silencieusement ignoré en mode `read` et `review`.
-  - Validation : 26/26 `test_modes.py` + 20/20 `test_phase0.py` + 24/24 `test_resilience.py`.
+  - Validation : 26/26 `test_modes.py` + 20/20 `test_phase0.py` + 30/30 `test_resilience.py`.
   - **Slice B différée** (classifier automatique de mode à partir de `task_text`) : nécessite un premier appel LLM dédié ou heuristique, scope Phase 2.
 
 ### Phase 2 - Coopération multi-agent réelle
@@ -830,7 +831,7 @@ Pour le développeur :
 
 **Scripts de validation / diagnostic (offline, sans réseau)**
 - `scripts/test_phase0.py` — validation statique Phase 0 (20/20)
-- `scripts/test_resilience.py` — tests unitaires résilience NIM §3 + §3bis (24/24)
+- `scripts/test_resilience.py` — tests unitaires résilience NIM §3 + §3bis (30/30)
 - `scripts/test_modes.py` — tests unitaires modes d'usage Phase 1 §2 (26/26)
 - `test_phase0.bat` — lanceur Windows pour `test_phase0.py`
 
@@ -853,6 +854,25 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 > Trace des modifications apportées au projet, conformément au protocole
 > (distinction repo modifié / prod alignée / validation réelle).
 > Les entrées les plus récentes sont en haut.
+
+### 2026-07-09 — Phase 1 §3bis / Retry budgets séparés + timeout LLM
+
+- **Scope** : `crew/crew.py`, `scripts/test_resilience.py`, corrections lint mécaniques dans les scripts de diagnostic/tests, README et document maître.
+- **Cause racine reprise du journal 2026-04-20** : `malformed_retry_used` était un booléen unique partagé entre XML Hermes et intention courte 0-tools. Une cascade `XML Hermes -> intention courte` consommait donc tout le budget au premier symptôme et laissait passer le second.
+- **Changement appliqué** : ajout de `_malformed_output_kind()` pour classifier `xml_hermes` vs `intention_0_tools`; `FallbackLLM.call()` garde maintenant un set `malformed_retries_used` et autorise un retry par type sur le même modèle. Le log devient `[sortie malformed <kind> ...]` au lieu de toujours annoncer XML Hermes. Ajout aussi de `LLM_TIMEOUT_SECONDS = 90`, transmis aux `crewai.LLM`, pour borner un appel modèle avant fallback chain. Le timeout est surchargeable par `NEXUS_LLM_TIMEOUT_SECONDS`, ce qui permet des runs de validation courts compatibles avec la limite d'exécution Codex.
+- **Tests ajoutés** : scénario fake LLM offline `XML Hermes -> intention courte -> réponse valide`, qui vérifie 3 appels et deux retries distincts; contrôle que les LLM internes reçoivent bien `timeout=LLM_TIMEOUT_SECONDS`; contrôle aussi l'override env valide (`30`) et le fallback sur valeur invalide.
+- **Validation offline** :
+  - `uv run --with-requirements requirements.txt python scripts\test_phase0.py` : 20/20 OK.
+  - `uv run --with-requirements requirements.txt python scripts\test_modes.py` : 26/26 OK.
+  - `uv run --with-requirements requirements.txt python scripts\test_resilience.py` : 30/30 OK.
+  - `python -c "ast.parse(...)"` sur `crew/crew.py` et `scripts/test_resilience.py` : OK.
+  - `git diff --check` : OK.
+  - `uv run --with ruff ruff check crew scripts` : OK.
+- **Validation runtime NIM réelle** : tentée dans cette session avec `NEXUS_DEBUG_LLM=1 uv run --with-requirements requirements.txt python crew\crew.py "Relis crew/crew.py et identifie les risques ou points faibles" --project . --mode review`. Résultat : timeout après ~244 s sans sortie exploitable; deux processus Python NEXUS restés actifs ont été identifiés puis arrêtés (`Stop-Process -Id 2156,16268 -Force`). La cascade réelle reste donc non confirmée.
+- **Repo modifié** : oui (`crew/crew.py`, `scripts/test_resilience.py`, `scripts/test_connection.py`, `scripts/test_crewai_schema.py`, `scripts/test_modes.py`, `scripts/test_phase0.py`, `scripts/test_rate_headers.py`, `scripts/test_tool_use.py`, `DOCUMENT_MAITRE_PROJET.md`, `README.md`).
+- **Prod alignée** : N/A.
+- **Validation réelle effectuée** : oui pour validation offline automatisée; non pour runtime NIM réel.
+- **Commit** : *(ce commit)*
 
 ### 2026-04-20 — Observation runtime mode REVIEW + **dette §3bis : retry budget épuisable**
 

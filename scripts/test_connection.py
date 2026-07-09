@@ -12,7 +12,6 @@ Vérifie que NEXUS Crew est prêt à tourner :
 Usage : python scripts/test_connection.py
 """
 
-import json
 import os
 import sys
 from pathlib import Path

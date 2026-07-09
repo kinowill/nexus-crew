@@ -261,6 +261,17 @@ python crew/crew.py "ta tache" --project C:/chemin/projet [options]
 | `--deep`, `-d` | Ajoute le Scanner |
 | `--allow`, `-a` | Dossier supplementaire accessible |
 
+### Validation runtime bornee
+
+Pour eviter qu'un run NIM long bloque la session Codex, borner les appels LLM :
+
+```bash
+NEXUS_LLM_TIMEOUT_SECONDS=30 NEXUS_DEBUG_LLM=1 python crew/crew.py "Relis crew/crew.py" --project . --mode review
+```
+
+Le defaut reste 90s par appel modele. Pour une validation courte, utiliser 30-45s,
+puis conserver le log dans un fichier local gitignore si le run doit etre analyse.
+
 ### Exemples
 
 ```bash
@@ -293,7 +304,7 @@ AGENTIQUE/
 │   ├── test_connection.py   # Sante : API, modeles, deps
 │   ├── discover_models.py   # Inventaire modele NIM
 │   ├── test_phase0.py       # Validation statique Phase 0 (20/20)
-│   ├── test_resilience.py   # Tests unitaires resilience NIM §3/§3bis (24/24)
+│   ├── test_resilience.py   # Tests unitaires resilience NIM §3/§3bis (30/30)
 │   ├── test_modes.py        # Tests unitaires modes d'usage Phase 1 §2 (26/26)
 │   ├── test_tool_use.py     # Matrice tool use par modele NIM
 │   ├── tool_use_matrix.md   # Resultats de la matrice

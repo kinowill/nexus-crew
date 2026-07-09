@@ -61,7 +61,7 @@ def main():
 
     print()
     print("=" * 70)
-    print(f"  Probe headers NIM")
+    print("  Probe headers NIM")
     print(f"  Modele : {args.model}")
     print(f"  URL    : {url}")
     print("=" * 70)

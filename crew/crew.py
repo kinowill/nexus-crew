@@ -61,11 +61,11 @@ os.environ["OTEL_SDK_DISABLED"] = "true"
 
 # ─── Imports CrewAI (après config env) ────────────────────────────────────────
 
-from crewai import Agent, Task, Crew, LLM, BaseLLM, Process
-from crewai.tools import tool
-from pydantic import ConfigDict
+from crewai import Agent, Task, Crew, LLM, BaseLLM, Process  # noqa: E402
+from crewai.tools import tool  # noqa: E402
+from pydantic import ConfigDict  # noqa: E402
 
-from contracts import ContractTracker
+from contracts import ContractTracker  # noqa: E402
 
 # ─── Cache LiteLLM disk (scope = session courante uniquement) ─────────────────
 # Le cache est vidé à chaque démarrage pour éviter des réponses obsolètes
@@ -170,6 +170,19 @@ def _strip_strict_tools(tools: list) -> list:
 # en bursts) et variance intrinseque Kimi K2 Thinking (~10% de reponses texte
 # sans tool_calls quand des tools sont fournis). Voir journal 2026-04-19.
 RATE_LIMIT_BACKOFFS = [1.0, 2.0, 4.0]  # attentes apres 429 avant fallback chain
+LLM_TIMEOUT_SECONDS = 90  # defaut; surcharge possible via NEXUS_LLM_TIMEOUT_SECONDS
+
+
+def _resolve_llm_timeout_seconds() -> int:
+    """Retourne le timeout d'un appel modele, configurable par environnement."""
+    raw = os.environ.get("NEXUS_LLM_TIMEOUT_SECONDS", "").strip()
+    if not raw:
+        return LLM_TIMEOUT_SECONDS
+    try:
+        timeout = int(raw)
+    except ValueError:
+        return LLM_TIMEOUT_SECONDS
+    return max(10, timeout)
 
 # Phase 1 §3bis (journal 2026-04-20) — Variance "0 tools au tour 1" : un modele
 # peut renvoyer une intention en texte nu sans emettre de tool_call alors que
@@ -198,30 +211,31 @@ def _is_rate_limit_error(err: Exception) -> bool:
     return "429" in msg or "rate limit" in msg or "too many requests" in msg
 
 
+def _malformed_output_kind(out, had_tools: bool) -> str | None:
+    """Return the malformed output kind when tools were provided."""
+    if not had_tools or not isinstance(out, str):
+        return None
+    if "<tool_call>" in out or "<function=" in out:
+        return "xml_hermes"
+    if len(out) < MALFORMED_SHORT_TEXT_MAX:
+        low = out.lower()
+        if any(p in low for p in _INTENTION_PATTERNS):
+            return "intention_0_tools"
+    return None
+
+
 def _output_looks_malformed(out, had_tools: bool) -> bool:
     """Detecte une sortie cassee quand des tools etaient fournis.
 
     Deux modes de defaillance couverts :
 
-    1. XML Hermes (journal 2026-04-19) — le modele emet <tool_call>... ou
-       <function=... au lieu du format tool_calls natif OpenAI (Qwen Coder,
-       Kimi K2). CrewAI ne parse pas ce format et retourne le XML brut comme
-       "Final Answer".
-    2. Intention 0-tools courte (journal 2026-04-20) — le modele repond en
+    1. XML Hermes (journal 2026-04-19) - le modele emet <tool_call>... ou
+       <function=... au lieu du format tool_calls natif OpenAI.
+    2. Intention 0-tools courte (journal 2026-04-20) - le modele repond en
        texte narratif court sans appeler d'outil alors que des outils sont
-       disponibles. Le filtre cumule trois signaux pour minimiser les faux
-       positifs : tools fournis + sortie < MALFORMED_SHORT_TEXT_MAX chars
-       + presence d'un marqueur d'intention typique.
+       disponibles.
     """
-    if not had_tools or not isinstance(out, str):
-        return False
-    if "<tool_call>" in out or "<function=" in out:
-        return True
-    if len(out) < MALFORMED_SHORT_TEXT_MAX:
-        low = out.lower()
-        if any(p in low for p in _INTENTION_PATTERNS):
-            return True
-    return False
+    return _malformed_output_kind(out, had_tools) is not None
 
 
 class FallbackLLM(BaseLLM):
@@ -242,6 +256,7 @@ class FallbackLLM(BaseLLM):
                 api_key=API_KEY,
                 base_url=NVIDIA_BASE,
                 temperature=temperature,
+                timeout=_resolve_llm_timeout_seconds(),
                 # NIM Llama ne supporte pas les tool calls parallèles
                 parallel_tool_calls=False,
             )
@@ -288,7 +303,7 @@ class FallbackLLM(BaseLLM):
         for idx, llm in enumerate(self._llms):
             model_name = self._chain[idx]
             rl_attempts = 0
-            malformed_retry_used = False
+            malformed_retries_used = set()
 
             while True:
                 if debug:
@@ -323,17 +338,19 @@ class FallbackLLM(BaseLLM):
                     print(f"  [modèle {model_name} a échoué : {str(e)[:100]}]")
                     break  # passe au LLM suivant de la chaine
 
-                # (b) 1 retry sur meme modele si sortie XML Hermes cassee
-                if _output_looks_malformed(out, had_tools) and not malformed_retry_used:
-                    malformed_retry_used = True
-                    print(f"  [sortie XML Hermes {model_name} : retry-1 sur meme modele]")
+                # (b) 1 retry par type de sortie cassee sur le meme modele.
+                malformed_kind = _malformed_output_kind(out, had_tools)
+                if malformed_kind and malformed_kind not in malformed_retries_used:
+                    malformed_retries_used.add(malformed_kind)
+                    print(f"  [sortie malformed {malformed_kind} {model_name} : "
+                          f"retry-{len(malformed_retries_used)} sur meme modele]")
                     continue
 
                 if idx > 0:
                     print(f"  [fallback actif : {model_name}]")
-                if debug and (malformed_retry_used or rl_attempts > 0):
+                if debug and (malformed_retries_used or rl_attempts > 0):
                     print(f"  [LLM] {model_name} OK apres "
-                          f"rl_retries={rl_attempts} malformed_retry={malformed_retry_used}")
+                          f"rl_retries={rl_attempts} malformed_retries={len(malformed_retries_used)}")
                 return out
 
         raise RuntimeError(f"Tous les fallbacks ont échoué pour {self._chain[0]} : {last_err}")
@@ -476,7 +493,8 @@ def grep_tool(pattern: str, glob: str = "*") -> str:
             return f"Erreur grep natif : {e}"
 
     # Fallback Python pur
-    import re, fnmatch
+    import re
+    import fnmatch
     try:
         rx = re.compile(pattern)
     except re.error as e:
@@ -1024,9 +1042,9 @@ def main():
     print(f"    - read       : ON  ({roots_detail})")
     print(f"    - write_file : {'ON ' if write_on else 'OFF'} (dry-run si OFF)")
     if shell_on:
-        print(f"    - run_shell  : ON  (Coder uniquement, shell=False, allowlist stricte)")
+        print("    - run_shell  : ON  (Coder uniquement, shell=False, allowlist stricte)")
     else:
-        print(f"    - run_shell  : OFF (activer avec --allow-shell)")
+        print("    - run_shell  : OFF (activer avec --allow-shell)")
     print()
 
     tracker = ContractTracker()

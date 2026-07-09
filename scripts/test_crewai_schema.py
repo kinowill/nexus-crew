@@ -216,14 +216,14 @@ def main():
     for label, (simple, crewai) in results.items():
         if simple == "NATIVE" and crewai != "NATIVE":
             print(f"  {label}: SIMPLE=NATIVE, CREWAI={crewai}")
-            print(f"    -> Le schema CrewAI casse ce modele. HYPOTHESE 2 CONFIRMEE.")
+            print("    -> Le schema CrewAI casse ce modele. HYPOTHESE 2 CONFIRMEE.")
             hypothesis_confirmed = True
         elif simple == "NATIVE" and crewai == "NATIVE":
             print(f"  {label}: SIMPLE=NATIVE, CREWAI=NATIVE")
-            print(f"    -> Le schema CrewAI ne casse PAS ce modele.")
+            print("    -> Le schema CrewAI ne casse PAS ce modele.")
         else:
             print(f"  {label}: SIMPLE={simple}, CREWAI={crewai}")
-            print(f"    -> Resultat non concluant (schema simple deja en echec).")
+            print("    -> Resultat non concluant (schema simple deja en echec).")
 
     print()
     if hypothesis_confirmed:
