@@ -88,7 +88,7 @@ Le pipeline s'adapte au mode d'usage choisi via `--mode` (defaut : `edit`) :
 **Mode `read`** (comprendre / auditer, pas de modification) :
 
 ```text
-    [Researcher]  -->  [Architect (synth)]
+    [Researcher]  <- rapport direct
 ```
 
 **Mode `review`** (relire l'existant, pas de Coder) :
@@ -139,21 +139,22 @@ suivant prend le relais automatiquement.
 
 | Role | Primaire | Fallback 1 | Fallback 2 |
 |---|---|---|---|
-| Researcher | Qwen 3.5 397B | DeepSeek V3.2 | Llama 3.3 70B |
-| Architect | Qwen 3.5 397B | DeepSeek V3.2 | Llama 3.3 70B |
+| Researcher | Qwen 3.5 397B | GPT-OSS 120B | Nemotron Super 49B |
+| Architect | Qwen 3.5 397B | GPT-OSS 120B | Nemotron Super 49B |
 | Coder | Qwen 3 Coder 480B | Devstral 2 123B | Kimi K2 Instruct |
 | Critic | Kimi K2 Thinking | Qwen 3 Next 80B Thinking | Nemotron Super 49B |
 | Scanner | Llama 3.3 70B | GPT-OSS 120B | Gemma 3 27B |
 
-> Les chaines sont calibrees a partir de la matrice tool use NIM
-> (`scripts/tool_use_matrix.md`) qui mesure la capacite reelle de chaque
+> Les chaines sont calibrees a partir de la matrice tool use NIM et des observations runtime bornees
+> (`scripts/tool_use_matrix.md`) qui mesure la capacite simple-tool; les fallbacks Researcher/Architect ont ete ajustes apres observations runtime multi-outils. Cette matrice doit etre regeneree.
+> Elle mesure la capacite reelle de chaque
 > modele a appeler des outils au format OpenAI standard.
 
 ---
 
 ## Collaboration Actuelle
 
-- `allow_delegation=True` sur tous les agents.
+- `allow_delegation=False` sur tous les agents tant que la gouvernance Phase 2 n'existe pas.
 - Cache LiteLLM disk sur `.crew_cache/` quand l'environnement le supporte.
 - Boucle `Critic -> Coder` via `rework_task` en modes `edit` / `debug`.
 - **Contrats de sortie par task** (`crew/contracts.py`, Phase 1 §1) : chaque
@@ -304,8 +305,8 @@ AGENTIQUE/
 │   ├── test_connection.py   # Sante : API, modeles, deps
 │   ├── discover_models.py   # Inventaire modele NIM
 │   ├── test_phase0.py       # Validation statique Phase 0 (20/20)
-│   ├── test_resilience.py   # Tests unitaires resilience NIM §3/§3bis (30/30)
-│   ├── test_modes.py        # Tests unitaires modes d'usage Phase 1 §2 (26/26)
+│   ├── test_resilience.py   # Tests unitaires resilience NIM §3/§3bis (31/31)
+│   ├── test_modes.py        # Tests unitaires modes d'usage Phase 1 §2 (31/31)
 │   ├── test_tool_use.py     # Matrice tool use par modele NIM
 │   ├── tool_use_matrix.md   # Resultats de la matrice
 │   └── test_crewai_schema.py # Preuve du fix schemas CrewAI -> NIM (§0.c)

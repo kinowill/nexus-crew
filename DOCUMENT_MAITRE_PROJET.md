@@ -752,9 +752,9 @@ Autrement dit :
 - introduire une couche de gouvernance ;
 - **§2 — Séparer les modes `read`, `edit`, `review`, `debug`** : ✅ SLICE A FAITE (2026-04-20).
   - CLI `--mode {read,edit,review,debug}` dans `crew.py`, défaut `edit` (non-régression).
-  - `build_crew` route les tasks par mode : `read` = 2 tasks (Researcher + synthèse Architect), `review` = 3 tasks (Researcher + review standalone + synthèse), `edit`/`debug` = pipeline complet 6 tasks (inchangé). `debug` est alias de `edit` côté composition, différenciation produit reportée Phase 2.
+  - `build_crew` route les tasks par mode : `read` = 1 task (Researcher direct), `review` = 3 tasks (Researcher + review standalone + synthèse), `edit`/`debug` = pipeline complet 6 tasks (inchangé). `debug` est alias de `edit` côté composition, différenciation produit reportée Phase 2.
   - Garde-fou : `--write` silencieusement ignoré en mode `read` et `review`.
-  - Validation : 26/26 `test_modes.py` + 20/20 `test_phase0.py` + 30/30 `test_resilience.py`.
+  - Validation : 31/31 `test_modes.py` + 20/20 `test_phase0.py` + 31/31 `test_resilience.py`.
   - **Slice B différée** (classifier automatique de mode à partir de `task_text`) : nécessite un premier appel LLM dédié ou heuristique, scope Phase 2.
 
 ### Phase 2 - Coopération multi-agent réelle
@@ -831,8 +831,8 @@ Pour le développeur :
 
 **Scripts de validation / diagnostic (offline, sans réseau)**
 - `scripts/test_phase0.py` — validation statique Phase 0 (20/20)
-- `scripts/test_resilience.py` — tests unitaires résilience NIM §3 + §3bis (30/30)
-- `scripts/test_modes.py` — tests unitaires modes d'usage Phase 1 §2 (26/26)
+- `scripts/test_resilience.py` — tests unitaires résilience NIM §3 + §3bis (31/31)
+- `scripts/test_modes.py` — tests unitaires modes d'usage Phase 1 §2 (31/31)
 - `test_phase0.bat` — lanceur Windows pour `test_phase0.py`
 
 **Scripts de diagnostic NIM (avec réseau, coûteux en tokens)**
@@ -855,6 +855,28 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 > (distinction repo modifié / prod alignée / validation réelle).
 > Les entrées les plus récentes sont en haut.
 
+### 2026-07-09 — Phase 1 §2/§3 runtime borné : délégation désactivée, read simplifié, fallbacks Researcher/Architect corrigés
+
+- **Scope** : `crew/crew.py`, `scripts/test_modes.py`, `scripts/test_resilience.py`, `README.md`, `DOCUMENT_MAITRE_PROJET.md`.
+- **Contexte** : après le commit `76ed724`, plusieurs runs `--mode read` bornés avec `NEXUS_LLM_TIMEOUT_SECONDS=30` ont encore dépassé la limite Codex (~244 s). Les logs sont dans `run_bounded_read.log` (gitignored).
+- **Diagnostic runtime successif** :
+  - Run 1 : la délégation CrewAI était encore active (`delegate_work_to_coworker`) malgré le mode read. Cause : `allow_delegation=True` sur tous les agents.
+  - Run 2 : délégation désactivée, mais Qwen timeout + DeepSeek 404 étaient repayés à chaque tour ReAct. Cause : les modèles en erreur n'étaient pas mémorisés comme indisponibles dans `FallbackLLM`.
+  - Run 3 : cache des modèles indisponibles OK (`ignore (desactive pour ce run)`), mais Llama 3.3 70B casse en runtime multi-outils avec erreur NIM `single tool-calls only`.
+  - Mini-test direct multi-outils : `devstral` et `kimi-k2-instruct` retournent 404 côté NIM actuel; `nvidia/llama-3.3-nemotron-super-49b-v1.5` et `openai/gpt-oss-120b` renvoient un `tool_call` avec plusieurs outils disponibles.
+  - Run 4 : chaînes Researcher/Architect corrigées vers `Qwen -> GPT-OSS -> Nemotron`; Researcher produit une carte complète, mais le mode read à 2 tasks timeout au démarrage de l'Architect.
+  - Run 5 : mode read réduit à 1 task Researcher et fallbacks ordonnés `Qwen -> GPT-OSS -> Nemotron`; le run produit un rapport final complet dans `run_bounded_read.log`. Qwen timeout au premier appel, puis GPT-OSS prend le relais sans délégation ni boucle Architect.
+- **Changements appliqués** :
+  - `allow_delegation=False` pour Researcher, Architect, Coder, Critic, Scanner tant que la gouvernance Phase 2 n'existe pas.
+  - `FallbackLLM` mémorise les modèles en erreur non-429 dans `_disabled_model_indices` et les ignore aux appels suivants du même agent.
+  - Chaînes `researcher` et `architect` : DeepSeek/Llama 70B retirés; fallbacks actuels `GPT-OSS 120B`, puis `Nemotron Super 49B`.
+  - Mode `read` : simplifié à 1 task Researcher direct (plus de synthèse Architect) pour réduire le coût runtime.
+- **Validation offline** : `test_phase0.py` 20/20 OK, `test_modes.py` 31/31 OK, `test_resilience.py` 31/31 OK, `ruff check crew scripts` OK, `git diff --check` OK.
+- **Validation runtime NIM réelle** : oui sur le périmètre `read` borné. Le log final contient un rapport complet et aucun processus Python NEXUS n'est resté actif. Limite résiduelle : Qwen timeout au premier appel dans ce run; le fallback GPT-OSS permet toutefois d'obtenir une sortie exploitable.
+- **Repo modifié** : oui.
+- **Prod alignée** : N/A.
+- **Validation réelle effectuée** : offline oui; runtime NIM oui sur `--mode read`; autres modes non retestés dans ce bloc.
+- **Commit** : *(ce commit)*.
 ### 2026-07-09 — Phase 1 §3bis / Retry budgets séparés + timeout LLM
 
 - **Scope** : `crew/crew.py`, `scripts/test_resilience.py`, corrections lint mécaniques dans les scripts de diagnostic/tests, README et document maître.
@@ -863,8 +885,8 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 - **Tests ajoutés** : scénario fake LLM offline `XML Hermes -> intention courte -> réponse valide`, qui vérifie 3 appels et deux retries distincts; contrôle que les LLM internes reçoivent bien `timeout=LLM_TIMEOUT_SECONDS`; contrôle aussi l'override env valide (`30`) et le fallback sur valeur invalide.
 - **Validation offline** :
   - `uv run --with-requirements requirements.txt python scripts\test_phase0.py` : 20/20 OK.
-  - `uv run --with-requirements requirements.txt python scripts\test_modes.py` : 26/26 OK.
-  - `uv run --with-requirements requirements.txt python scripts\test_resilience.py` : 30/30 OK.
+  - `uv run --with-requirements requirements.txt python scripts\test_modes.py` : 31/31 OK.
+  - `uv run --with-requirements requirements.txt python scripts\test_resilience.py` : 31/31 OK.
   - `python -c "ast.parse(...)"` sur `crew/crew.py` et `scripts/test_resilience.py` : OK.
   - `git diff --check` : OK.
   - `uv run --with ruff ruff check crew scripts` : OK.

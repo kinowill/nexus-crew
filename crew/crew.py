@@ -106,16 +106,17 @@ NVIDIA_EMBEDDER = {
 MODEL_CHAINS = {
     "researcher": [
         "openai/qwen/qwen3.5-397b-a17b",
-        "openai/deepseek-ai/deepseek-v3.2",
-        "openai/meta/llama-3.3-70b-instruct",
+        "openai/openai/gpt-oss-120b",
+        "openai/nvidia/llama-3.3-nemotron-super-49b-v1.5",
     ],
     "architect": [
-        # 2026-04-09 : Qwen 3.5 397B promu primaire après matrice tool use NIM
-        # (scripts/tool_use_matrix.md). DeepSeek V3.2 retrograde en fallback :
-        # timeout 60s sur l'appel test simple, instable cote NIM.
+        # 2026-07-09 : DeepSeek V3.2 et Llama 3.3 70B retires de cette chaine.
+        # DeepSeek retourne 404/timeout cote NIM; Llama 70B casse en runtime
+        # multi-outils (single tool-calls only). GPT-OSS et Nemotron valides
+        # en appel direct avec plusieurs outils disponibles.
         "openai/qwen/qwen3.5-397b-a17b",
-        "openai/deepseek-ai/deepseek-v3.2",
-        "openai/meta/llama-3.3-70b-instruct",
+        "openai/openai/gpt-oss-120b",
+        "openai/nvidia/llama-3.3-nemotron-super-49b-v1.5",
     ],
     "coder": [
         "openai/qwen/qwen3-coder-480b-a35b-instruct",
@@ -264,6 +265,7 @@ class FallbackLLM(BaseLLM):
         ]
         object.__setattr__(self, "_chain", chain)
         object.__setattr__(self, "_llms", llms)
+        object.__setattr__(self, "_disabled_model_indices", set())
 
     def call(self, messages, tools=None, callbacks=None, available_functions=None,
              from_task=None, from_agent=None, response_model=None):
@@ -302,6 +304,10 @@ class FallbackLLM(BaseLLM):
 
         for idx, llm in enumerate(self._llms):
             model_name = self._chain[idx]
+            if idx in self._disabled_model_indices:
+                if debug:
+                    print(f"  [LLM] model={model_name} ignore (desactive pour ce run)")
+                continue
             rl_attempts = 0
             malformed_retries_used = set()
 
@@ -335,6 +341,7 @@ class FallbackLLM(BaseLLM):
                               f"retry {rl_attempts}/{len(RATE_LIMIT_BACKOFFS)}]")
                         time.sleep(wait)
                         continue
+                    self._disabled_model_indices.add(idx)
                     print(f"  [modèle {model_name} a échoué : {str(e)[:100]}]")
                     break  # passe au LLM suivant de la chaine
 
@@ -614,7 +621,7 @@ def make_researcher() -> Agent:
         llm=make_llm("researcher"),
         tools=READ_TOOLS,
         verbose=True,
-        allow_delegation=True,
+        allow_delegation=False,
         max_iter=8,
     )
 
@@ -632,7 +639,7 @@ def make_architect() -> Agent:
         llm=make_llm("architect"),
         tools=READ_TOOLS,
         verbose=True,
-        allow_delegation=True,
+        allow_delegation=False,
         max_iter=6,
     )
 
@@ -658,7 +665,7 @@ def make_coder() -> Agent:
             else READ_TOOLS + [write_file_tool]
         ),
         verbose=True,
-        allow_delegation=True,
+        allow_delegation=False,
         max_iter=15,
     )
 
@@ -684,7 +691,7 @@ def make_critic() -> Agent:
         # (dette acceptée Phase 0 — voir DOCUMENT_MAITRE_PROJET §Journal 2026-04-08).
         tools=READ_TOOLS,
         verbose=True,
-        allow_delegation=True,
+        allow_delegation=False,
         max_iter=8,
     )
 
@@ -700,7 +707,7 @@ def make_scanner() -> Agent:
         llm=make_llm("scanner"),
         tools=READ_TOOLS,
         verbose=True,
-        allow_delegation=True,
+        allow_delegation=False,
         max_iter=5,
     )
 
@@ -750,26 +757,11 @@ def build_crew(task_text: str, project_path: Path, deep: bool,
     # On instancie les agents et tasks specifiques selon le mode. Les modes
     # "read" et "review" n'ont pas besoin du Coder — economie concrete NIM.
     if mode == "read":
-        # Lecture seule : Researcher plonge, Architect synthetise pour l'utilisateur.
-        architect = make_architect()
-        final_task = Task(
-            description=(
-                f"Synthèse pour l'utilisateur (mode READ — aucune modification).\n"
-                f"Tâche originale : {task_text}\n\n"
-                "À partir de la carte du Researcher, produis un rapport clair :\n"
-                "- Ce que fait le projet / le module concerné\n"
-                "- Points clés d'architecture et dépendances\n"
-                "- Risques ou points d'attention identifiés\n"
-                "- Références aux fichiers pertinents (chemins précis)\n"
-                "Ne propose PAS de modification : l'utilisateur veut comprendre, pas agir."
-            ),
-            expected_output="Un rapport final markdown lisible par un humain non-développeur",
-            agent=architect,
-            context=[research_task],
-        )
-        tasks = [research_task, final_task]
-        agents = [researcher, architect]
-
+        # Lecture seule economique : le Researcher produit directement le
+        # rapport utilisateur. La synthese Architect etait qualitative, mais
+        # trop couteuse en runtime NIM borne pour les validations Codex.
+        tasks = [research_task]
+        agents = [researcher]
     elif mode == "review":
         # Relecture d'un etat existant (pas d'output Coder a analyser).
         critic = make_critic()
@@ -915,7 +907,7 @@ def build_crew(task_text: str, project_path: Path, deep: bool,
     if tracker:
         tracker.register(research_task.description, "research")
         if mode == "read":
-            tracker.register(final_task.description, "final")
+            pass
         elif mode == "review":
             tracker.register(review_standalone_task.description, "review")
             tracker.register(final_task.description, "final")

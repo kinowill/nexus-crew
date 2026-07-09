@@ -234,7 +234,10 @@ class _FakeLLM:
         self.calls += 1
         if not self.outputs:
             raise AssertionError("Fake LLM called too many times")
-        return self.outputs.pop(0)
+        out = self.outputs.pop(0)
+        if isinstance(out, Exception):
+            raise out
+        return out
 
 
 def _fake_fallback(outputs):
@@ -262,6 +265,19 @@ check(
     f"timeouts={[getattr(inner, 'timeout', None) for inner in timeout_override_llm._llms]}",
 )
 os.environ.pop("NEXUS_LLM_TIMEOUT_SECONDS", None)
+
+skip_llm = FallbackLLM(["openai/bad-model", "openai/good-model"])
+skip_bad = _FakeLLM([TimeoutError("boom")])
+skip_good = _FakeLLM(["ok-1", "ok-2"])
+object.__setattr__(skip_llm, "_llms", [skip_bad, skip_good])
+object.__setattr__(skip_llm, "_chain", ["openai/bad-model", "openai/good-model"])
+skip_first = skip_llm.call(messages=[{"role": "user", "content": "x"}], tools=None)
+skip_second = skip_llm.call(messages=[{"role": "user", "content": "x"}], tools=None)
+check(
+    "fallback : modele en erreur ignore aux appels suivants",
+    skip_first == "ok-1" and skip_second == "ok-2" and skip_bad.calls == 1 and skip_good.calls == 2,
+    f"first={skip_first!r} second={skip_second!r} bad_calls={skip_bad.calls} good_calls={skip_good.calls}",
+)
 
 retry_llm, retry_fake = _fake_fallback([
     "<tool_call>{\"name\":\"read_file\"}</tool_call>",

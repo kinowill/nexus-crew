@@ -53,6 +53,10 @@ def agent_roles(crew) -> list[str]:
     return [getattr(a, "role", "?") for a in crew.agents]
 
 
+def agent_delegation_flags(crew) -> list[bool]:
+    return [bool(getattr(a, "allow_delegation", False)) for a in crew.agents]
+
+
 # ─── Constantes publiques ────────────────────────────────────────────────────
 check(
     "constantes : VALID_MODES contient read/edit/review/debug",
@@ -71,13 +75,13 @@ tracker = ContractTracker()
 crew = build_crew("explique ce projet", ROOT, deep=False,
                   tracker=tracker, mode="read")
 check(
-    "read : 2 tasks (research + final)",
-    len(crew.tasks) == 2,
+    "read : 1 task (research only)",
+    len(crew.tasks) == 1,
     f"n={len(crew.tasks)}",
 )
 check(
-    "read : agents = [Researcher, Architect]",
-    agent_roles(crew) == ["Researcher", "Architect"],
+    "read : agents = [Researcher]",
+    agent_roles(crew) == ["Researcher"],
     f"roles={agent_roles(crew)}",
 )
 check(
@@ -89,8 +93,8 @@ check(
     "Critic" not in agent_roles(crew),
 )
 check(
-    "read : 2 contrats enregistres (research + final)",
-    len(tracker._contracts) == 2,
+    "read : 1 contrat enregistre (research)",
+    len(tracker._contracts) == 1,
     f"n={len(tracker._contracts)}",
 )
 
@@ -168,7 +172,7 @@ except Exception as e:
 
 
 # ─── --deep prepend scan_task quel que soit le mode ─────────────────────────
-for m, base_n in [("read", 2), ("review", 3), ("edit", 6), ("debug", 6)]:
+for m, base_n in [("read", 1), ("review", 3), ("edit", 6), ("debug", 6)]:
     crew = build_crew("x", ROOT, deep=True, mode=m)
     expected = base_n + 1
     check(
@@ -181,6 +185,11 @@ for m, base_n in [("read", 2), ("review", 3), ("edit", 6), ("debug", 6)]:
         "Scanner" in agent_roles(crew),
         f"roles={agent_roles(crew)}",
     )
+    check(
+        f"deep + mode={m} : delegation desactivee",
+        not any(agent_delegation_flags(crew)),
+        f"flags={agent_delegation_flags(crew)}",
+    )
 
 
 # ─── Default mode == edit (non-regression) ──────────────────────────────────
@@ -189,6 +198,11 @@ check(
     "defaut sans mode= : 6 tasks (= edit)",
     len(crew_default.tasks) == 6,
     f"n={len(crew_default.tasks)}",
+)
+check(
+    "defaut sans mode= : delegation desactivee",
+    not any(agent_delegation_flags(crew_default)),
+    f"flags={agent_delegation_flags(crew_default)}",
 )
 
 
