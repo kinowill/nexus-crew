@@ -799,12 +799,25 @@ def _validate_attempts_map(raw, field_name: str) -> dict[str, int]:
     return validated
 
 
+def _validate_correction_ledger_schema_version(payload: dict) -> None:
+    """Validate the optional correction ledger schema version."""
+    if "schema_version" not in payload:
+        return
+    version = payload["schema_version"]
+    if version != CORRECTION_LEDGER_SCHEMA_VERSION:
+        raise ValueError(
+            "correction ledger schema_version must be "
+            f"{CORRECTION_LEDGER_SCHEMA_VERSION}"
+        )
+
+
 def _load_correction_attempt_ledger(project_path: Path, target: str) -> tuple[dict[str, int], dict[str, int]]:
     """Load correction attempts from a JSON file under the project root."""
     ledger_path = _resolve_correction_ledger_json_path(project_path, target)
     payload = json.loads(ledger_path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         raise ValueError("correction ledger json must be an object")
+    _validate_correction_ledger_schema_version(payload)
     attempts_used_by_task = _validate_attempts_map(
         payload.get("attempts_used_by_task"),
         "attempts_used_by_task",
@@ -841,7 +854,7 @@ def _correction_attempt_ledger_payload(
         if not interaction.get("should_dispatch")
     )
     return {
-        "schema_version": 1,
+        "schema_version": CORRECTION_LEDGER_SCHEMA_VERSION,
         "attempts_used_by_task": dict(sorted(attempts_used_by_task.items())),
         "attempts_used_by_interaction_id": dict(sorted(attempts_used_by_interaction_id.items())),
         "correction_plan": tracker.correction_plan_payload(
@@ -879,6 +892,7 @@ def _write_correction_attempt_ledger(
     return ledger_path
 
 
+CORRECTION_LEDGER_SCHEMA_VERSION = 1
 VALID_MODES = ("read", "edit", "review", "debug")
 DEFAULT_MODE = "edit"
 

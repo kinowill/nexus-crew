@@ -37,6 +37,7 @@ from crew.crew import (  # noqa: E402
     build_crew,
     VALID_MODES,
     DEFAULT_MODE,
+    CORRECTION_LEDGER_SCHEMA_VERSION,
     _correction_attempt_ledger_payload,
     _load_correction_attempt_ledger,
     _resolve_correction_ledger_json_path,
@@ -124,16 +125,31 @@ except Exception as e:
 with tempfile.TemporaryDirectory(dir=ROOT) as tmpdir:
     ledger_path = Path(tmpdir) / "ledger.json"
     ledger_path.write_text(json.dumps({
+        "schema_version": CORRECTION_LEDGER_SCHEMA_VERSION,
         "attempts_used_by_task": {"research": 1},
         "attempts_used_by_interaction_id": {"research:TestAgent:request_task_rerun": 2},
     }), encoding="utf-8")
     by_task, by_interaction = _load_correction_attempt_ledger(ROOT, str(ledger_path))
+check("correction ledger : schema version courante acceptee", by_task == {"research": 1}, str(by_task))
 check("correction ledger : task chargee", by_task == {"research": 1}, str(by_task))
 check(
     "correction ledger : interaction chargee",
     by_interaction == {"research:TestAgent:request_task_rerun": 2},
     str(by_interaction),
 )
+with tempfile.TemporaryDirectory(dir=ROOT) as tmpdir:
+    bad_schema_path = Path(tmpdir) / "ledger.json"
+    bad_schema_path.write_text(json.dumps({
+        "schema_version": CORRECTION_LEDGER_SCHEMA_VERSION + 1,
+        "attempts_used_by_task": {"research": 1},
+    }), encoding="utf-8")
+    try:
+        _load_correction_attempt_ledger(ROOT, str(bad_schema_path))
+        check("correction ledger : schema version inconnue refusee", False, "pas d'exception")
+    except ValueError:
+        check("correction ledger : schema version inconnue refusee", True)
+    except Exception as e:
+        check("correction ledger : schema version inconnue refusee", False, f"{type(e).__name__}: {e}")
 with tempfile.TemporaryDirectory(dir=ROOT) as tmpdir:
     bad_ledger_path = Path(tmpdir) / "ledger.json"
     bad_ledger_path.write_text(json.dumps({"attempts_used_by_task": {"research": -1}}), encoding="utf-8")
@@ -155,6 +171,11 @@ ledger_payload = _correction_attempt_ledger_payload(
     attempts_used_by_task={"research": 1},
 )
 ledger_interaction_id = "research:TestAgent:request_task_rerun"
+check(
+    "correction ledger out : schema version present",
+    ledger_payload["schema_version"] == CORRECTION_LEDGER_SCHEMA_VERSION,
+    str(ledger_payload),
+)
 check(
     "correction ledger out : tentatives task conservees",
     ledger_payload["attempts_used_by_task"] == {"research": 1},

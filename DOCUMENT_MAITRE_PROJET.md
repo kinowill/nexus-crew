@@ -773,6 +773,7 @@ Autrement dit :
 - **§L — Propagation du ledger de tentatives dans le JSON** : ✅ FAIT (2026-07-16). `governance_payload()`, `governance_json()` et `write_governance_json()` acceptent maintenant les ledgers optionnels de tentatives par task ou par `interaction_id`, afin que `correction_plan`, `corrective_actions` et `corrective_interactions` reflètent directement l'état consommé.
 - **§M — Chargement CLI du ledger correctif JSON** : ✅ FAIT (2026-07-16). Le CLI expose `--correction-ledger-json` pour lire, sous `--project`, un ledger de tentatives correctives (`attempts_used_by_task`, `attempts_used_by_interaction_id`) et l'appliquer au résumé correctif comme au rapport `--governance-json`, sans relance automatique.
 - **§N — Snapshot CLI du ledger correctif JSON** : ✅ FAIT (2026-07-16). Le CLI expose `--correction-ledger-out-json` pour écrire, sous `--project`, un snapshot du ledger correctif consommé, du plan correctif et des interactions pending/bloquées. Ce snapshot n'incrémente aucune tentative et ne déclenche toujours aucune relance automatique.
+- **§O — Version de schéma du ledger correctif JSON** : ✅ FAIT (2026-07-16). Le ledger correctif expose maintenant `schema_version = 1` via `CORRECTION_LEDGER_SCHEMA_VERSION`; le CLI accepte les ledgers entrants sans version pour compatibilité, mais refuse une version présente et inconnue.
 - autoriser les interactions inter-agents utiles ;
 - les typer proprement ;
 - borner les boucles ;
@@ -846,7 +847,7 @@ Pour le développeur :
 **Scripts de validation / diagnostic (offline, sans réseau)**
 - `scripts/test_phase0.py` — validation statique Phase 0 (22/22)
 - `scripts/test_resilience.py` — tests unitaires résilience NIM §3 + §3bis (31/31)
-- `scripts/test_modes.py` — tests unitaires modes d'usage Phase 1 §2 + gardes chemin JSON/ledger et snapshot correctif (44/44)
+- `scripts/test_modes.py` — tests unitaires modes d'usage Phase 1 §2 + gardes chemin JSON/ledger, snapshot correctif et schéma ledger (47/47)
 - `scripts/test_contracts.py` — tests contrats + rapports de gouvernance Phase 2 §A/§B/§C/§D/§E/§F/§G/§H/§I/§J/§K/§L (76/76)
 - `test_phase0.bat` — lanceur Windows pour `test_phase0.py`
 
@@ -869,6 +870,18 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 > Trace des modifications apportées au projet, conformément au protocole
 > (distinction repo modifié / prod alignée / validation réelle).
 > Les entrées les plus récentes sont en haut.
+
+### 2026-07-16 — Phase 2 §O / Version de schéma du ledger correctif JSON
+
+- **Scope** : `crew/crew.py`, `scripts/test_modes.py`, `README.md`, `DOCUMENT_MAITRE_PROJET.md`.
+- **Motivation** : §N écrivait un snapshot de ledger avec `schema_version`, mais cette version n'était pas centralisée et l'entrée CLI ne refusait pas encore une version explicitement inconnue.
+- **Changement applique** : ajout de `CORRECTION_LEDGER_SCHEMA_VERSION = 1`; le snapshot écrit cette constante et `_load_correction_attempt_ledger()` refuse un `schema_version` présent mais différent. Les ledgers entrants sans `schema_version` restent acceptés pour compatibilité.
+- **Tests ajoutés** : `scripts/test_modes.py` couvre version courante acceptée, version inconnue refusée et présence de la version dans le snapshot sortant.
+- **Validation offline** : `test_contracts.py` 76/76 OK, `test_modes.py` 47/47 OK, `test_resilience.py` 31/31 OK, `test_phase0.py` 22/22 OK, `crew.py --help` OK, `ruff check crew scripts` OK, `py_compile` OK, `git diff --check` OK.
+- **Repo modifié** : oui.
+- **Prod alignée** : N/A (outil local).
+- **Validation runtime NIM** : non nécessaire pour cette slice CLI/JSON/tests offline uniquement.
+- **Commit** : *(ce commit).*
 
 ### 2026-07-16 — Phase 2 §N / Snapshot CLI du ledger correctif JSON
 
