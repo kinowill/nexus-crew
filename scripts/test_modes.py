@@ -20,6 +20,7 @@ import os
 import sys
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
@@ -36,9 +37,11 @@ from crew.crew import (  # noqa: E402
     build_crew,
     VALID_MODES,
     DEFAULT_MODE,
+    _correction_attempt_ledger_payload,
     _load_correction_attempt_ledger,
     _resolve_correction_ledger_json_path,
     _resolve_governance_json_path,
+    _write_correction_attempt_ledger,
 )
 from contracts import ContractTracker  # noqa: E402
 
@@ -60,6 +63,20 @@ def agent_roles(crew) -> list[str]:
 
 def agent_delegation_flags(crew) -> list[bool]:
     return [bool(getattr(a, "allow_delegation", False)) for a in crew.agents]
+
+
+def task_output(description: str, raw: str, tools: list[str] | None = None):
+    tool_calls = [
+        {"function": {"name": tool_name}}
+        for tool_name in (tools or [])
+    ]
+    messages = [{"tool_calls": tool_calls}] if tool_calls else []
+    return SimpleNamespace(
+        agent="TestAgent",
+        raw=raw,
+        description=description,
+        messages=messages,
+    )
 
 
 # ─── Constantes publiques ────────────────────────────────────────────────────
@@ -127,6 +144,60 @@ with tempfile.TemporaryDirectory(dir=ROOT) as tmpdir:
         check("correction ledger : valeur negative refusee", True)
     except Exception as e:
         check("correction ledger : valeur negative refusee", False, f"{type(e).__name__}: {e}")
+
+ledger_tracker = ContractTracker()
+ledger_description = "Ledger bad research"
+ledger_tracker.register(ledger_description, "research")
+ledger_tracker.on_task_done(task_output(ledger_description, "court", tools=[]))
+ledger_payload = _correction_attempt_ledger_payload(
+    ledger_tracker,
+    correction_attempt_budget=2,
+    attempts_used_by_task={"research": 1},
+)
+ledger_interaction_id = "research:TestAgent:request_task_rerun"
+check(
+    "correction ledger out : tentatives task conservees",
+    ledger_payload["attempts_used_by_task"] == {"research": 1},
+    str(ledger_payload),
+)
+check(
+    "correction ledger out : interaction pending sans consommation",
+    ledger_payload["pending_interaction_ids"] == [ledger_interaction_id],
+    str(ledger_payload),
+)
+check("correction ledger out : aucune interaction bloquee", ledger_payload["blocked_interaction_ids"] == [])
+exhausted_ledger_payload = _correction_attempt_ledger_payload(
+    ledger_tracker,
+    correction_attempt_budget=1,
+    attempts_used_by_interaction_id={ledger_interaction_id: 1},
+)
+check(
+    "correction ledger out : interaction bloquee si budget epuise",
+    exhausted_ledger_payload["blocked_interaction_ids"] == [ledger_interaction_id],
+    str(exhausted_ledger_payload),
+)
+with tempfile.TemporaryDirectory(dir=ROOT) as tmpdir:
+    out_ledger_path = _write_correction_attempt_ledger(
+        ROOT,
+        str(Path(tmpdir) / "ledger-out.json"),
+        ledger_tracker,
+        correction_attempt_budget=2,
+        attempts_used_by_task={"research": 1},
+    )
+    out_ledger_payload = json.loads(out_ledger_path.read_text(encoding="utf-8"))
+check("correction ledger out : fichier ecrit", out_ledger_payload["interactions_count"] == 1, str(out_ledger_payload))
+try:
+    _write_correction_attempt_ledger(
+        ROOT,
+        str(ROOT.parent / "ledger-out.json"),
+        ledger_tracker,
+        correction_attempt_budget=1,
+    )
+    check("correction ledger out : chemin hors projet refuse", False, "pas d'exception")
+except ValueError:
+    check("correction ledger out : chemin hors projet refuse", True)
+except Exception as e:
+    check("correction ledger out : chemin hors projet refuse", False, f"{type(e).__name__}: {e}")
 # ─── mode = "read" ───────────────────────────────────────────────────────────
 tracker = ContractTracker()
 crew = build_crew("explique ce projet", ROOT, deep=False,

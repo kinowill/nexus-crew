@@ -816,6 +816,69 @@ def _load_correction_attempt_ledger(project_path: Path, target: str) -> tuple[di
     return attempts_used_by_task, attempts_used_by_interaction_id
 
 
+def _correction_attempt_ledger_payload(
+    tracker: ContractTracker,
+    correction_attempt_budget: int,
+    attempts_used_by_task: dict[str, int] | None = None,
+    attempts_used_by_interaction_id: dict[str, int] | None = None,
+) -> dict:
+    """Return the current correction ledger snapshot without consuming attempts."""
+    attempts_used_by_task = attempts_used_by_task or {}
+    attempts_used_by_interaction_id = attempts_used_by_interaction_id or {}
+    interactions = tracker.corrective_interactions(
+        attempts_budget=correction_attempt_budget,
+        attempts_used_by_task=attempts_used_by_task,
+        attempts_used_by_interaction_id=attempts_used_by_interaction_id,
+    )
+    pending_ids = sorted(
+        interaction["interaction_id"]
+        for interaction in interactions
+        if interaction.get("should_dispatch")
+    )
+    blocked_ids = sorted(
+        interaction["interaction_id"]
+        for interaction in interactions
+        if not interaction.get("should_dispatch")
+    )
+    return {
+        "schema_version": 1,
+        "attempts_used_by_task": dict(sorted(attempts_used_by_task.items())),
+        "attempts_used_by_interaction_id": dict(sorted(attempts_used_by_interaction_id.items())),
+        "correction_plan": tracker.correction_plan_payload(
+            attempts_budget=correction_attempt_budget,
+            attempts_used_by_task=attempts_used_by_task,
+            attempts_used_by_interaction_id=attempts_used_by_interaction_id,
+        ),
+        "pending_interaction_ids": pending_ids,
+        "blocked_interaction_ids": blocked_ids,
+        "interactions_count": len(interactions),
+    }
+
+
+def _write_correction_attempt_ledger(
+    project_path: Path,
+    target: str,
+    tracker: ContractTracker,
+    correction_attempt_budget: int,
+    attempts_used_by_task: dict[str, int] | None = None,
+    attempts_used_by_interaction_id: dict[str, int] | None = None,
+) -> Path:
+    """Write the current correction ledger snapshot under the project root."""
+    ledger_path = _resolve_correction_ledger_json_path(project_path, target)
+    ledger_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = _correction_attempt_ledger_payload(
+        tracker=tracker,
+        correction_attempt_budget=correction_attempt_budget,
+        attempts_used_by_task=attempts_used_by_task,
+        attempts_used_by_interaction_id=attempts_used_by_interaction_id,
+    )
+    ledger_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return ledger_path
+
+
 VALID_MODES = ("read", "edit", "review", "debug")
 DEFAULT_MODE = "edit"
 
@@ -1081,6 +1144,9 @@ def main():
     parser.add_argument("--correction-ledger-json",
                         help="Lit un ledger JSON de tentatives correctives sous --project. "
                              "N'active pas de retry automatique.")
+    parser.add_argument("--correction-ledger-out-json",
+                        help="Ecrit un snapshot du ledger correctif sous --project. "
+                             "N'incremente aucune tentative et n'active pas de retry automatique.")
     parser.add_argument("--allow", "-a", action="append", default=[],
                         help="Dossier supplémentaire accessible (répétable). "
                              "Ex : --allow C:/autres/libs --allow D:/data")
@@ -1190,6 +1256,20 @@ def main():
             print(f"[GOUVERNANCE] rapport JSON ecrit : {governance_path}")
         except Exception as e:
             print(f"ERREUR : impossible d'ecrire le rapport de gouvernance JSON : {e}")
+            sys.exit(1)
+    if args.correction_ledger_out_json:
+        try:
+            ledger_path = _write_correction_attempt_ledger(
+                project_path=project_path,
+                target=args.correction_ledger_out_json,
+                tracker=tracker,
+                correction_attempt_budget=args.correction_attempt_budget,
+                attempts_used_by_task=attempts_used_by_task,
+                attempts_used_by_interaction_id=attempts_used_by_interaction_id,
+            )
+            print(f"[CORRECTION] ledger JSON ecrit : {ledger_path}")
+        except Exception as e:
+            print(f"ERREUR : impossible d'ecrire le ledger correctif JSON : {e}")
             sys.exit(1)
     governance_exit_code = tracker.exit_code(strict_contracts=args.strict_contracts)
     if governance_exit_code:
