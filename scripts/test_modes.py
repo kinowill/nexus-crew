@@ -37,12 +37,16 @@ from crew.crew import (  # noqa: E402
     build_crew,
     VALID_MODES,
     DEFAULT_MODE,
+    CORRECTION_DISPATCH_SCHEMA_VERSION,
     CORRECTION_LEDGER_SCHEMA_VERSION,
     _correction_attempt_ledger_payload,
+    _correction_dispatch_payload,
     _load_correction_attempt_ledger,
+    _resolve_correction_dispatch_json_path,
     _resolve_correction_ledger_json_path,
     _resolve_governance_json_path,
     _write_correction_attempt_ledger,
+    _write_correction_dispatch_json,
 )
 from contracts import ContractTracker  # noqa: E402
 
@@ -219,6 +223,72 @@ except ValueError:
     check("correction ledger out : chemin hors projet refuse", True)
 except Exception as e:
     check("correction ledger out : chemin hors projet refuse", False, f"{type(e).__name__}: {e}")
+
+relative_dispatch_path = _resolve_correction_dispatch_json_path(ROOT, "reports/correction-dispatch.json")
+check(
+    "correction dispatch : chemin relatif reste dans le projet",
+    ROOT.resolve() in relative_dispatch_path.parents,
+    str(relative_dispatch_path),
+)
+try:
+    _resolve_correction_dispatch_json_path(ROOT, str(ROOT.parent / "dispatch.json"))
+    check("correction dispatch : chemin hors projet refuse", False, "pas d'exception")
+except ValueError:
+    check("correction dispatch : chemin hors projet refuse", True)
+except Exception as e:
+    check("correction dispatch : chemin hors projet refuse", False, f"{type(e).__name__}: {e}")
+dispatch_payload = _correction_dispatch_payload(
+    ledger_tracker,
+    correction_attempt_budget=2,
+    attempts_used_by_task={"research": 1},
+)
+check("correction dispatch : schema version present", dispatch_payload["schema_version"] == CORRECTION_DISPATCH_SCHEMA_VERSION)
+check("correction dispatch : dispatch disponible", dispatch_payload["status"] == "DISPATCH_AVAILABLE", str(dispatch_payload))
+check("correction dispatch : une interaction dispatchable", dispatch_payload["dispatchable_count"] == 1, str(dispatch_payload))
+check(
+    "correction dispatch : next ledger interaction incrementee",
+    dispatch_payload["next_ledger"]["attempts_used_by_interaction_id"] == {ledger_interaction_id: 2},
+    str(dispatch_payload),
+)
+blocked_dispatch_payload = _correction_dispatch_payload(
+    ledger_tracker,
+    correction_attempt_budget=1,
+    attempts_used_by_interaction_id={ledger_interaction_id: 1},
+)
+check(
+    "correction dispatch : budget epuise bloque dispatch",
+    blocked_dispatch_payload["status"] == "DISPATCH_BLOCKED_BUDGET_EXHAUSTED",
+    str(blocked_dispatch_payload),
+)
+check(
+    "correction dispatch : interaction bloquee listee",
+    blocked_dispatch_payload["blocked_interaction_ids"] == [ledger_interaction_id],
+    str(blocked_dispatch_payload),
+)
+clean_dispatch_payload = _correction_dispatch_payload(ContractTracker(), correction_attempt_budget=1)
+check("correction dispatch : rien a dispatcher", clean_dispatch_payload["status"] == "NO_DISPATCH_NEEDED", str(clean_dispatch_payload))
+with tempfile.TemporaryDirectory(dir=ROOT) as tmpdir:
+    dispatch_path = _write_correction_dispatch_json(
+        ROOT,
+        str(Path(tmpdir) / "dispatch.json"),
+        ledger_tracker,
+        correction_attempt_budget=2,
+        attempts_used_by_task={"research": 1},
+    )
+    written_dispatch_payload = json.loads(dispatch_path.read_text(encoding="utf-8"))
+check("correction dispatch : fichier ecrit", written_dispatch_payload["dispatchable_count"] == 1, str(written_dispatch_payload))
+try:
+    _write_correction_dispatch_json(
+        ROOT,
+        str(ROOT.parent / "dispatch.json"),
+        ledger_tracker,
+        correction_attempt_budget=1,
+    )
+    check("correction dispatch : ecriture hors projet refusee", False, "pas d'exception")
+except ValueError:
+    check("correction dispatch : ecriture hors projet refusee", True)
+except Exception as e:
+    check("correction dispatch : ecriture hors projet refusee", False, f"{type(e).__name__}: {e}")
 # ─── mode = "read" ───────────────────────────────────────────────────────────
 tracker = ContractTracker()
 crew = build_crew("explique ce projet", ROOT, deep=False,

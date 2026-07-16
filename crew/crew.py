@@ -783,6 +783,20 @@ def _resolve_correction_ledger_json_path(project_path: Path, target: str) -> Pat
     return full
 
 
+def _resolve_correction_dispatch_json_path(project_path: Path, target: str) -> Path:
+    """Resolve a correction dispatch manifest path inside the project root."""
+    dispatch_path = Path(target)
+    full = (
+        dispatch_path.resolve()
+        if dispatch_path.is_absolute()
+        else (project_path / dispatch_path).resolve()
+    )
+    project_root = project_path.resolve()
+    if full != project_root and project_root not in full.parents:
+        raise ValueError("correction dispatch json path must stay inside --project")
+    return full
+
+
 def _validate_attempts_map(raw, field_name: str) -> dict[str, int]:
     """Validate a correction-attempt ledger map."""
     if raw is None:
@@ -892,7 +906,88 @@ def _write_correction_attempt_ledger(
     return ledger_path
 
 
+def _correction_dispatch_payload(
+    tracker: ContractTracker,
+    correction_attempt_budget: int,
+    attempts_used_by_task: dict[str, int] | None = None,
+    attempts_used_by_interaction_id: dict[str, int] | None = None,
+) -> dict:
+    """Return a dry-run dispatch manifest and the ledger it would consume."""
+    attempts_used_by_task = attempts_used_by_task or {}
+    attempts_used_by_interaction_id = attempts_used_by_interaction_id or {}
+    interactions = tracker.corrective_interactions(
+        attempts_budget=correction_attempt_budget,
+        attempts_used_by_task=attempts_used_by_task,
+        attempts_used_by_interaction_id=attempts_used_by_interaction_id,
+    )
+    dispatchable = [
+        interaction for interaction in interactions
+        if interaction.get("should_dispatch")
+    ]
+    blocked_ids = sorted(
+        interaction["interaction_id"]
+        for interaction in interactions
+        if not interaction.get("should_dispatch")
+    )
+    next_attempts_by_interaction_id = dict(attempts_used_by_interaction_id)
+    for interaction in dispatchable:
+        interaction_id = interaction["interaction_id"]
+        next_attempts_by_interaction_id[interaction_id] = interaction["attempts_used"] + 1
+
+    if dispatchable:
+        status = "DISPATCH_AVAILABLE"
+    elif interactions:
+        status = "DISPATCH_BLOCKED_BUDGET_EXHAUSTED"
+    else:
+        status = "NO_DISPATCH_NEEDED"
+
+    return {
+        "schema_version": CORRECTION_DISPATCH_SCHEMA_VERSION,
+        "ledger_schema_version": CORRECTION_LEDGER_SCHEMA_VERSION,
+        "status": status,
+        "dispatchable_count": len(dispatchable),
+        "blocked_count": len(blocked_ids),
+        "dispatchable_interactions": dispatchable,
+        "blocked_interaction_ids": blocked_ids,
+        "correction_plan": tracker.correction_plan_payload(
+            attempts_budget=correction_attempt_budget,
+            attempts_used_by_task=attempts_used_by_task,
+            attempts_used_by_interaction_id=attempts_used_by_interaction_id,
+        ),
+        "next_ledger": {
+            "schema_version": CORRECTION_LEDGER_SCHEMA_VERSION,
+            "attempts_used_by_task": dict(sorted(attempts_used_by_task.items())),
+            "attempts_used_by_interaction_id": dict(sorted(next_attempts_by_interaction_id.items())),
+        },
+    }
+
+
+def _write_correction_dispatch_json(
+    project_path: Path,
+    target: str,
+    tracker: ContractTracker,
+    correction_attempt_budget: int,
+    attempts_used_by_task: dict[str, int] | None = None,
+    attempts_used_by_interaction_id: dict[str, int] | None = None,
+) -> Path:
+    """Write a dry-run correction dispatch manifest under the project root."""
+    dispatch_path = _resolve_correction_dispatch_json_path(project_path, target)
+    dispatch_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = _correction_dispatch_payload(
+        tracker=tracker,
+        correction_attempt_budget=correction_attempt_budget,
+        attempts_used_by_task=attempts_used_by_task,
+        attempts_used_by_interaction_id=attempts_used_by_interaction_id,
+    )
+    dispatch_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return dispatch_path
+
+
 CORRECTION_LEDGER_SCHEMA_VERSION = 1
+CORRECTION_DISPATCH_SCHEMA_VERSION = 1
 VALID_MODES = ("read", "edit", "review", "debug")
 DEFAULT_MODE = "edit"
 
@@ -1161,6 +1256,9 @@ def main():
     parser.add_argument("--correction-ledger-out-json",
                         help="Ecrit un snapshot du ledger correctif sous --project. "
                              "N'incremente aucune tentative et n'active pas de retry automatique.")
+    parser.add_argument("--correction-dispatch-json",
+                        help="Ecrit un manifeste dry-run des interactions correctives dispatchables "
+                             "et du prochain ledger sous --project. N'active pas de retry automatique.")
     parser.add_argument("--allow", "-a", action="append", default=[],
                         help="Dossier supplémentaire accessible (répétable). "
                              "Ex : --allow C:/autres/libs --allow D:/data")
@@ -1284,6 +1382,20 @@ def main():
             print(f"[CORRECTION] ledger JSON ecrit : {ledger_path}")
         except Exception as e:
             print(f"ERREUR : impossible d'ecrire le ledger correctif JSON : {e}")
+            sys.exit(1)
+    if args.correction_dispatch_json:
+        try:
+            dispatch_path = _write_correction_dispatch_json(
+                project_path=project_path,
+                target=args.correction_dispatch_json,
+                tracker=tracker,
+                correction_attempt_budget=args.correction_attempt_budget,
+                attempts_used_by_task=attempts_used_by_task,
+                attempts_used_by_interaction_id=attempts_used_by_interaction_id,
+            )
+            print(f"[CORRECTION] manifeste dispatch JSON ecrit : {dispatch_path}")
+        except Exception as e:
+            print(f"ERREUR : impossible d'ecrire le manifeste dispatch correctif JSON : {e}")
             sys.exit(1)
     governance_exit_code = tracker.exit_code(strict_contracts=args.strict_contracts)
     if governance_exit_code:
