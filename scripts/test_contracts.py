@@ -200,16 +200,32 @@ check("json : correction budget custom present", custom_budget_payload["correcti
 check("json : action budget custom propage", custom_budget_payload["corrective_actions"][0]["attempts_budget"] == 3)
 check("json : interaction type present", custom_budget_payload["corrective_actions"][0]["interaction_type"] == INTERACTION_REQUEST_TASK_RERUN)
 check("json : interaction id present", custom_budget_payload["corrective_actions"][0]["interaction_id"] == "research:TestAgent:request_task_rerun")
+interaction_attempts_payload = bad_tracker.governance_payload(
+    strict_contracts=True,
+    correction_attempt_budget=1,
+    attempts_used_by_interaction_id={actions[0].interaction_id: 1},
+)
+check("payload ledger : plan epuise", interaction_attempts_payload["correction_plan"]["status"] == CORRECTION_PLAN_BUDGET_EXHAUSTED, str(interaction_attempts_payload))
+check("payload ledger : action non relancable", not interaction_attempts_payload["corrective_actions"][0]["should_rerun"])
+check("payload ledger : interaction bloquee", interaction_attempts_payload["corrective_interactions"][0]["status"] == INTERACTION_STATUS_BLOCKED_BUDGET_EXHAUSTED)
+interaction_attempts_json = json.loads(bad_tracker.governance_json(
+    strict_contracts=True,
+    correction_attempt_budget=1,
+    attempts_used_by_interaction_id={actions[0].interaction_id: 1},
+))
+check("json ledger : plan epuise", interaction_attempts_json["correction_plan"]["status"] == CORRECTION_PLAN_BUDGET_EXHAUSTED)
 with tempfile.TemporaryDirectory() as tmpdir:
     output_path = bad_tracker.write_governance_json(
         Path(tmpdir) / "governance.json",
         strict_contracts=True,
         correction_attempt_budget=2,
+        attempts_used_by_interaction_id={actions[0].interaction_id: 1},
     )
     written_payload = json.loads(output_path.read_text(encoding="utf-8"))
 check("json file : rapport ecrit", written_payload["violations_count"] == 2)
 check("json file : action hint conserve", written_payload["violations"][0]["action_hint"] == ACTION_HINT_USE_REQUIRED_TOOL)
 check("json file : correction budget custom conserve", written_payload["corrective_actions"][0]["attempts_budget"] == 2)
+check("json file ledger : tentative conservee", written_payload["corrective_actions"][0]["attempts_used"] == 1)
 
 
 

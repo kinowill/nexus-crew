@@ -770,6 +770,7 @@ Autrement dit :
 - **§I — Enveloppes d'interactions correctives JSON** : ✅ FAIT (2026-07-16). Les actions correctives peuvent maintenant être exposées sous `corrective_interactions`, avec `interaction_id`, `interaction_type`, `status`, source, agent cible, task, raison et état de dispatch. C'est une préparation traçable des futures interactions inter-agents, sans exécution automatique.
 - **§J — Version de schéma du rapport de gouvernance** : ✅ FAIT (2026-07-16). Le payload de gouvernance expose maintenant `schema_version` afin que les outils et futures boucles d'orchestration puissent reconnaître explicitement le format JSON consommé.
 - **§K — Suivi des tentatives par interaction corrective** : ✅ FAIT (2026-07-16). Les helpers correctifs acceptent maintenant `attempts_used_by_interaction_id`, prioritaire sur `attempts_used_by_task`, afin de suivre les budgets sur l'identifiant stable `interaction_id` plutôt que sur un nom de task trop grossier.
+- **§L — Propagation du ledger de tentatives dans le JSON** : ✅ FAIT (2026-07-16). `governance_payload()`, `governance_json()` et `write_governance_json()` acceptent maintenant les ledgers optionnels de tentatives par task ou par `interaction_id`, afin que `correction_plan`, `corrective_actions` et `corrective_interactions` reflètent directement l'état consommé.
 - autoriser les interactions inter-agents utiles ;
 - les typer proprement ;
 - borner les boucles ;
@@ -844,7 +845,7 @@ Pour le développeur :
 - `scripts/test_phase0.py` — validation statique Phase 0 (22/22)
 - `scripts/test_resilience.py` — tests unitaires résilience NIM §3 + §3bis (31/31)
 - `scripts/test_modes.py` — tests unitaires modes d'usage Phase 1 §2 + garde chemin JSON (33/33)
-- `scripts/test_contracts.py` — tests contrats + rapports de gouvernance Phase 2 §A/§B/§C/§D/§E/§F/§G/§H/§I/§J/§K (71/71)
+- `scripts/test_contracts.py` — tests contrats + rapports de gouvernance Phase 2 §A/§B/§C/§D/§E/§F/§G/§H/§I/§J/§K/§L (76/76)
 - `test_phase0.bat` — lanceur Windows pour `test_phase0.py`
 
 **Scripts de diagnostic NIM (avec réseau, coûteux en tokens)**
@@ -867,6 +868,16 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 > (distinction repo modifié / prod alignée / validation réelle).
 > Les entrées les plus récentes sont en haut.
 
+### 2026-07-16 — Phase 2 §L / Propagation du ledger de tentatives dans le JSON
+
+- **Scope** : `crew/contracts.py`, `scripts/test_contracts.py`, `README.md`, `DOCUMENT_MAITRE_PROJET.md`.
+- **Motivation** : §K permettait de calculer l'état de tentative par `interaction_id`, mais `governance_payload()` et `governance_json()` ne recevaient pas encore ce ledger. Les consommateurs JSON devaient donc appeler les helpers bas niveau séparément.
+- **Changement applique** : `governance_payload()`, `governance_json()` et `write_governance_json()` acceptent `attempts_used_by_task` et `attempts_used_by_interaction_id`, puis propagent ces valeurs vers `correction_plan`, `corrective_actions` et `corrective_interactions`. Aucune relance automatique n'est activée.
+- **Validation offline** : `test_contracts.py` 76/76 OK, `test_modes.py` 33/33 OK, `test_resilience.py` 31/31 OK, `test_phase0.py` 22/22 OK, `ruff check crew scripts` OK, `py_compile` OK, `git diff --check` OK.
+- **Repo modifié** : oui.
+- **Prod alignée** : N/A (outil local).
+- **Validation runtime NIM** : non nécessaire pour cette slice (contrats/JSON/tests offline uniquement).
+- **Commit** : *(ce commit).*
 ### 2026-07-16 — Phase 2 §K / Suivi des tentatives par interaction corrective
 
 - **Scope** : `crew/contracts.py`, `scripts/test_contracts.py`, `README.md`, `DOCUMENT_MAITRE_PROJET.md`.

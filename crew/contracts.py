@@ -515,6 +515,8 @@ class ContractTracker:
         self,
         strict_contracts: bool = False,
         correction_attempt_budget: int = DEFAULT_CORRECTION_ATTEMPT_BUDGET,
+        attempts_used_by_task: dict[str, int] | None = None,
+        attempts_used_by_interaction_id: dict[str, int] | None = None,
     ) -> dict:
         """Return a stable JSON-ready governance payload."""
         report = self.governance_report()
@@ -528,14 +530,20 @@ class ContractTracker:
             "correction_attempt_budget": correction_attempt_budget,
             "correction_plan": self.correction_plan_payload(
                 attempts_budget=correction_attempt_budget,
+                attempts_used_by_task=attempts_used_by_task,
+                attempts_used_by_interaction_id=attempts_used_by_interaction_id,
             ),
             "corrective_interactions": self.corrective_interactions(
                 attempts_budget=correction_attempt_budget,
+                attempts_used_by_task=attempts_used_by_task,
+                attempts_used_by_interaction_id=attempts_used_by_interaction_id,
             ),
             "corrective_actions": [
                 action.as_dict()
                 for action in self.corrective_actions(
                     attempts_budget=correction_attempt_budget,
+                    attempts_used_by_task=attempts_used_by_task,
+                    attempts_used_by_interaction_id=attempts_used_by_interaction_id,
                 )
             ],
             "violations": [violation.as_dict() for violation in self.violations],
@@ -545,12 +553,16 @@ class ContractTracker:
         self,
         strict_contracts: bool = False,
         correction_attempt_budget: int = DEFAULT_CORRECTION_ATTEMPT_BUDGET,
+        attempts_used_by_task: dict[str, int] | None = None,
+        attempts_used_by_interaction_id: dict[str, int] | None = None,
     ) -> str:
         """Return the governance payload as deterministic JSON."""
         return json.dumps(
             self.governance_payload(
                 strict_contracts=strict_contracts,
                 correction_attempt_budget=correction_attempt_budget,
+                attempts_used_by_task=attempts_used_by_task,
+                attempts_used_by_interaction_id=attempts_used_by_interaction_id,
             ),
             ensure_ascii=False,
             indent=2,
@@ -562,6 +574,8 @@ class ContractTracker:
         path: str | Path,
         strict_contracts: bool = False,
         correction_attempt_budget: int = DEFAULT_CORRECTION_ATTEMPT_BUDGET,
+        attempts_used_by_task: dict[str, int] | None = None,
+        attempts_used_by_interaction_id: dict[str, int] | None = None,
     ) -> Path:
         """Write the governance payload to disk and return the path."""
         output_path = Path(path)
@@ -570,6 +584,8 @@ class ContractTracker:
             self.governance_json(
                 strict_contracts=strict_contracts,
                 correction_attempt_budget=correction_attempt_budget,
+                attempts_used_by_task=attempts_used_by_task,
+                attempts_used_by_interaction_id=attempts_used_by_interaction_id,
             ) + "\n",
             encoding="utf-8",
         )
