@@ -38,11 +38,13 @@ from crew.crew import (  # noqa: E402
     VALID_MODES,
     DEFAULT_MODE,
     CORRECTION_DISPATCH_AVAILABLE,
+    CORRECTION_DISPATCH_AVAILABLE_EXIT_CODE,
     CORRECTION_DISPATCH_BLOCKED_BUDGET_EXHAUSTED,
     CORRECTION_DISPATCH_NO_DISPATCH_NEEDED,
     CORRECTION_DISPATCH_SCHEMA_VERSION,
     CORRECTION_LEDGER_SCHEMA_VERSION,
     _correction_attempt_ledger_payload,
+    _correction_dispatch_exit_code,
     _correction_dispatch_payload,
     _load_correction_attempt_ledger,
     _resolve_correction_dispatch_json_path,
@@ -262,6 +264,22 @@ check(
     dispatch_payload["next_ledger"]["attempts_used_by_interaction_id"] == {ledger_interaction_id: 2},
     str(dispatch_payload),
 )
+check(
+    "correction dispatch exit : non strict reste 0",
+    _correction_dispatch_exit_code(
+        ledger_tracker,
+        strict_correction_dispatch=False,
+        correction_attempt_budget=2,
+    ) == 0,
+)
+check(
+    "correction dispatch exit : dispatch disponible retourne 3",
+    _correction_dispatch_exit_code(
+        ledger_tracker,
+        strict_correction_dispatch=True,
+        correction_attempt_budget=2,
+    ) == CORRECTION_DISPATCH_AVAILABLE_EXIT_CODE,
+)
 blocked_dispatch_payload = _correction_dispatch_payload(
     ledger_tracker,
     correction_attempt_budget=1,
@@ -277,8 +295,25 @@ check(
     blocked_dispatch_payload["blocked_interaction_ids"] == [ledger_interaction_id],
     str(blocked_dispatch_payload),
 )
+check(
+    "correction dispatch exit : budget epuise reste 0",
+    _correction_dispatch_exit_code(
+        ledger_tracker,
+        strict_correction_dispatch=True,
+        correction_attempt_budget=1,
+        attempts_used_by_interaction_id={ledger_interaction_id: 1},
+    ) == 0,
+)
 clean_dispatch_payload = _correction_dispatch_payload(ContractTracker(), correction_attempt_budget=1)
 check("correction dispatch : rien a dispatcher", clean_dispatch_payload["status"] == CORRECTION_DISPATCH_NO_DISPATCH_NEEDED, str(clean_dispatch_payload))
+check(
+    "correction dispatch exit : rien a dispatcher reste 0",
+    _correction_dispatch_exit_code(
+        ContractTracker(),
+        strict_correction_dispatch=True,
+        correction_attempt_budget=1,
+    ) == 0,
+)
 with tempfile.TemporaryDirectory(dir=ROOT) as tmpdir:
     dispatch_path = _write_correction_dispatch_json(
         ROOT,

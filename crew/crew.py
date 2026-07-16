@@ -1010,11 +1010,33 @@ def _write_correction_next_ledger_json(
     return ledger_path
 
 
+def _correction_dispatch_exit_code(
+    tracker: ContractTracker,
+    strict_correction_dispatch: bool = False,
+    correction_attempt_budget: int = 1,
+    attempts_used_by_task: dict[str, int] | None = None,
+    attempts_used_by_interaction_id: dict[str, int] | None = None,
+) -> int:
+    """Return the optional CLI exit code for available corrective dispatches."""
+    if not strict_correction_dispatch:
+        return 0
+    payload = _correction_dispatch_payload(
+        tracker=tracker,
+        correction_attempt_budget=correction_attempt_budget,
+        attempts_used_by_task=attempts_used_by_task,
+        attempts_used_by_interaction_id=attempts_used_by_interaction_id,
+    )
+    if payload["status"] == CORRECTION_DISPATCH_AVAILABLE:
+        return CORRECTION_DISPATCH_AVAILABLE_EXIT_CODE
+    return 0
+
+
 CORRECTION_LEDGER_SCHEMA_VERSION = 1
 CORRECTION_DISPATCH_SCHEMA_VERSION = 1
 CORRECTION_DISPATCH_AVAILABLE = "DISPATCH_AVAILABLE"
 CORRECTION_DISPATCH_BLOCKED_BUDGET_EXHAUSTED = "DISPATCH_BLOCKED_BUDGET_EXHAUSTED"
 CORRECTION_DISPATCH_NO_DISPATCH_NEEDED = "NO_DISPATCH_NEEDED"
+CORRECTION_DISPATCH_AVAILABLE_EXIT_CODE = 3
 VALID_MODES = ("read", "edit", "review", "debug")
 DEFAULT_MODE = "edit"
 
@@ -1272,6 +1294,9 @@ def main():
     parser.add_argument("--strict-contracts", action="store_true",
                         help="Retourne exit code 2 si les contrats de sortie sont violés. "
                              "Par défaut, les violations sont imprimées sans changer l'exit code.")
+    parser.add_argument("--strict-correction-dispatch", action="store_true",
+                        help="Retourne exit code 3 si un dispatch correctif dry-run est disponible. "
+                             "N'active pas de retry automatique.")
     parser.add_argument("--governance-json",
                         help="Ecrit le rapport de gouvernance JSON dans un chemin sous --project.")
     parser.add_argument("--correction-attempt-budget", type=int, default=1,
@@ -1444,6 +1469,15 @@ def main():
     governance_exit_code = tracker.exit_code(strict_contracts=args.strict_contracts)
     if governance_exit_code:
         sys.exit(governance_exit_code)
+    dispatch_exit_code = _correction_dispatch_exit_code(
+        tracker=tracker,
+        strict_correction_dispatch=args.strict_correction_dispatch,
+        correction_attempt_budget=args.correction_attempt_budget,
+        attempts_used_by_task=attempts_used_by_task,
+        attempts_used_by_interaction_id=attempts_used_by_interaction_id,
+    )
+    if dispatch_exit_code:
+        sys.exit(dispatch_exit_code)
 
 
 if __name__ == "__main__":
