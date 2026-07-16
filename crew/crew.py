@@ -986,6 +986,30 @@ def _write_correction_dispatch_json(
     return dispatch_path
 
 
+def _write_correction_next_ledger_json(
+    project_path: Path,
+    target: str,
+    tracker: ContractTracker,
+    correction_attempt_budget: int,
+    attempts_used_by_task: dict[str, int] | None = None,
+    attempts_used_by_interaction_id: dict[str, int] | None = None,
+) -> Path:
+    """Write the next correction ledger projected by the dry-run dispatch."""
+    ledger_path = _resolve_correction_ledger_json_path(project_path, target)
+    ledger_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = _correction_dispatch_payload(
+        tracker=tracker,
+        correction_attempt_budget=correction_attempt_budget,
+        attempts_used_by_task=attempts_used_by_task,
+        attempts_used_by_interaction_id=attempts_used_by_interaction_id,
+    )["next_ledger"]
+    ledger_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return ledger_path
+
+
 CORRECTION_LEDGER_SCHEMA_VERSION = 1
 CORRECTION_DISPATCH_SCHEMA_VERSION = 1
 VALID_MODES = ("read", "edit", "review", "debug")
@@ -1259,6 +1283,9 @@ def main():
     parser.add_argument("--correction-dispatch-json",
                         help="Ecrit un manifeste dry-run des interactions correctives dispatchables "
                              "et du prochain ledger sous --project. N'active pas de retry automatique.")
+    parser.add_argument("--correction-next-ledger-json",
+                        help="Ecrit directement le next_ledger projeté sous --project, reutilisable "
+                             "avec --correction-ledger-json. N'active pas de retry automatique.")
     parser.add_argument("--allow", "-a", action="append", default=[],
                         help="Dossier supplémentaire accessible (répétable). "
                              "Ex : --allow C:/autres/libs --allow D:/data")
@@ -1396,6 +1423,20 @@ def main():
             print(f"[CORRECTION] manifeste dispatch JSON ecrit : {dispatch_path}")
         except Exception as e:
             print(f"ERREUR : impossible d'ecrire le manifeste dispatch correctif JSON : {e}")
+            sys.exit(1)
+    if args.correction_next_ledger_json:
+        try:
+            next_ledger_path = _write_correction_next_ledger_json(
+                project_path=project_path,
+                target=args.correction_next_ledger_json,
+                tracker=tracker,
+                correction_attempt_budget=args.correction_attempt_budget,
+                attempts_used_by_task=attempts_used_by_task,
+                attempts_used_by_interaction_id=attempts_used_by_interaction_id,
+            )
+            print(f"[CORRECTION] next ledger JSON ecrit : {next_ledger_path}")
+        except Exception as e:
+            print(f"ERREUR : impossible d'ecrire le next ledger correctif JSON : {e}")
             sys.exit(1)
     governance_exit_code = tracker.exit_code(strict_contracts=args.strict_contracts)
     if governance_exit_code:

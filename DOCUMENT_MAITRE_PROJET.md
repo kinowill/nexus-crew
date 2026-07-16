@@ -775,6 +775,7 @@ Autrement dit :
 - **§N — Snapshot CLI du ledger correctif JSON** : ✅ FAIT (2026-07-16). Le CLI expose `--correction-ledger-out-json` pour écrire, sous `--project`, un snapshot du ledger correctif consommé, du plan correctif et des interactions pending/bloquées. Ce snapshot n'incrémente aucune tentative et ne déclenche toujours aucune relance automatique.
 - **§O — Version de schéma du ledger correctif JSON** : ✅ FAIT (2026-07-16). Le ledger correctif expose maintenant `schema_version = 1` via `CORRECTION_LEDGER_SCHEMA_VERSION`; le CLI accepte les ledgers entrants sans version pour compatibilité, mais refuse une version présente et inconnue.
 - **§P — Manifeste dry-run de dispatch correctif** : ✅ FAIT (2026-07-16). Le CLI expose `--correction-dispatch-json` pour écrire, sous `--project`, les interactions correctives dispatchables, les interactions bloquées par budget et le `next_ledger` qui résulterait de leur consommation. Cette slice ne relance aucun agent et ne modifie pas le ledger d'entrée.
+- **§Q — Écriture directe du next ledger correctif** : ✅ FAIT (2026-07-16). Le CLI expose `--correction-next-ledger-json` pour écrire directement, sous `--project`, le `next_ledger` projeté par le manifeste dry-run. Le fichier produit est relisible par `--correction-ledger-json`; aucune relance automatique n'est exécutée.
 - autoriser les interactions inter-agents utiles ;
 - les typer proprement ;
 - borner les boucles ;
@@ -848,7 +849,7 @@ Pour le développeur :
 **Scripts de validation / diagnostic (offline, sans réseau)**
 - `scripts/test_phase0.py` — validation statique Phase 0 (22/22)
 - `scripts/test_resilience.py` — tests unitaires résilience NIM §3 + §3bis (31/31)
-- `scripts/test_modes.py` — tests unitaires modes d'usage Phase 1 §2 + gardes chemin JSON/ledger/dispatch, snapshot correctif et schémas (58/58)
+- `scripts/test_modes.py` — tests unitaires modes d'usage Phase 1 §2 + gardes chemin JSON/ledger/dispatch, snapshot correctif, next ledger et schémas (62/62)
 - `scripts/test_contracts.py` — tests contrats + rapports de gouvernance Phase 2 §A/§B/§C/§D/§E/§F/§G/§H/§I/§J/§K/§L (76/76)
 - `test_phase0.bat` — lanceur Windows pour `test_phase0.py`
 
@@ -871,6 +872,18 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 > Trace des modifications apportées au projet, conformément au protocole
 > (distinction repo modifié / prod alignée / validation réelle).
 > Les entrées les plus récentes sont en haut.
+
+### 2026-07-16 — Phase 2 §Q / Écriture directe du next ledger correctif
+
+- **Scope** : `crew/crew.py`, `scripts/test_modes.py`, `README.md`, `DOCUMENT_MAITRE_PROJET.md`.
+- **Motivation** : §P exposait le `next_ledger` dans le manifeste de dispatch, mais une session suivante devait encore l'extraire manuellement pour le fournir à `--correction-ledger-json`.
+- **Changement applique** : ajout de `--correction-next-ledger-json`, borné à `--project`, qui écrit directement le `next_ledger` projeté par `_correction_dispatch_payload()`. Le fichier produit conserve `schema_version`, `attempts_used_by_task` et `attempts_used_by_interaction_id`, et reste relisible par le loader de ledger.
+- **Tests ajoutés** : `scripts/test_modes.py` couvre écriture du next ledger, relecture par `_load_correction_attempt_ledger()`, conservation du budget épuisé et refus d'écriture hors projet.
+- **Validation offline** : `test_contracts.py` 76/76 OK, `test_modes.py` 62/62 OK, `test_resilience.py` 31/31 OK, `test_phase0.py` 22/22 OK, `crew.py --help` OK, `ruff check crew scripts` OK, `py_compile` OK, `git diff --check` OK.
+- **Repo modifié** : oui.
+- **Prod alignée** : N/A (outil local).
+- **Validation runtime NIM** : non nécessaire pour cette slice CLI/JSON/tests offline uniquement.
+- **Commit** : *(ce commit).*
 
 ### 2026-07-16 — Phase 2 §P / Manifeste dry-run de dispatch correctif
 

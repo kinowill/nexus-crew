@@ -47,6 +47,7 @@ from crew.crew import (  # noqa: E402
     _resolve_governance_json_path,
     _write_correction_attempt_ledger,
     _write_correction_dispatch_json,
+    _write_correction_next_ledger_json,
 )
 from contracts import ContractTracker  # noqa: E402
 
@@ -289,6 +290,44 @@ except ValueError:
     check("correction dispatch : ecriture hors projet refusee", True)
 except Exception as e:
     check("correction dispatch : ecriture hors projet refusee", False, f"{type(e).__name__}: {e}")
+with tempfile.TemporaryDirectory(dir=ROOT) as tmpdir:
+    next_ledger_path = _write_correction_next_ledger_json(
+        ROOT,
+        str(Path(tmpdir) / "next-ledger.json"),
+        ledger_tracker,
+        correction_attempt_budget=2,
+        attempts_used_by_task={"research": 1},
+    )
+    written_next_ledger = json.loads(next_ledger_path.read_text(encoding="utf-8"))
+    next_by_task, next_by_interaction = _load_correction_attempt_ledger(ROOT, str(next_ledger_path))
+check(
+    "correction next ledger : fichier ecrit",
+    written_next_ledger["attempts_used_by_interaction_id"] == {ledger_interaction_id: 2},
+    str(written_next_ledger),
+)
+check("correction next ledger : fichier relisible", next_by_task == {"research": 1} and next_by_interaction == {ledger_interaction_id: 2})
+blocked_next_path_payload = _correction_dispatch_payload(
+    ledger_tracker,
+    correction_attempt_budget=1,
+    attempts_used_by_interaction_id={ledger_interaction_id: 1},
+)["next_ledger"]
+check(
+    "correction next ledger : budget epuise conserve tentative",
+    blocked_next_path_payload["attempts_used_by_interaction_id"] == {ledger_interaction_id: 1},
+    str(blocked_next_path_payload),
+)
+try:
+    _write_correction_next_ledger_json(
+        ROOT,
+        str(ROOT.parent / "next-ledger.json"),
+        ledger_tracker,
+        correction_attempt_budget=1,
+    )
+    check("correction next ledger : ecriture hors projet refusee", False, "pas d'exception")
+except ValueError:
+    check("correction next ledger : ecriture hors projet refusee", True)
+except Exception as e:
+    check("correction next ledger : ecriture hors projet refusee", False, f"{type(e).__name__}: {e}")
 # ─── mode = "read" ───────────────────────────────────────────────────────────
 tracker = ContractTracker()
 crew = build_crew("explique ce projet", ROOT, deep=False,
