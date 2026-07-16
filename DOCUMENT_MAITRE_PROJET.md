@@ -771,6 +771,7 @@ Autrement dit :
 - **§J — Version de schéma du rapport de gouvernance** : ✅ FAIT (2026-07-16). Le payload de gouvernance expose maintenant `schema_version` afin que les outils et futures boucles d'orchestration puissent reconnaître explicitement le format JSON consommé.
 - **§K — Suivi des tentatives par interaction corrective** : ✅ FAIT (2026-07-16). Les helpers correctifs acceptent maintenant `attempts_used_by_interaction_id`, prioritaire sur `attempts_used_by_task`, afin de suivre les budgets sur l'identifiant stable `interaction_id` plutôt que sur un nom de task trop grossier.
 - **§L — Propagation du ledger de tentatives dans le JSON** : ✅ FAIT (2026-07-16). `governance_payload()`, `governance_json()` et `write_governance_json()` acceptent maintenant les ledgers optionnels de tentatives par task ou par `interaction_id`, afin que `correction_plan`, `corrective_actions` et `corrective_interactions` reflètent directement l'état consommé.
+- **§M — Chargement CLI du ledger correctif JSON** : ✅ FAIT (2026-07-16). Le CLI expose `--correction-ledger-json` pour lire, sous `--project`, un ledger de tentatives correctives (`attempts_used_by_task`, `attempts_used_by_interaction_id`) et l'appliquer au résumé correctif comme au rapport `--governance-json`, sans relance automatique.
 - autoriser les interactions inter-agents utiles ;
 - les typer proprement ;
 - borner les boucles ;
@@ -844,7 +845,7 @@ Pour le développeur :
 **Scripts de validation / diagnostic (offline, sans réseau)**
 - `scripts/test_phase0.py` — validation statique Phase 0 (22/22)
 - `scripts/test_resilience.py` — tests unitaires résilience NIM §3 + §3bis (31/31)
-- `scripts/test_modes.py` — tests unitaires modes d'usage Phase 1 §2 + garde chemin JSON (33/33)
+- `scripts/test_modes.py` — tests unitaires modes d'usage Phase 1 §2 + gardes chemin JSON/ledger (38/38)
 - `scripts/test_contracts.py` — tests contrats + rapports de gouvernance Phase 2 §A/§B/§C/§D/§E/§F/§G/§H/§I/§J/§K/§L (76/76)
 - `test_phase0.bat` — lanceur Windows pour `test_phase0.py`
 
@@ -868,6 +869,16 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 > (distinction repo modifié / prod alignée / validation réelle).
 > Les entrées les plus récentes sont en haut.
 
+### 2026-07-16 — Phase 2 §M / Chargement CLI du ledger correctif JSON
+
+- **Scope** : `crew/crew.py`, `scripts/test_modes.py`, `README.md`, `DOCUMENT_MAITRE_PROJET.md`.
+- **Motivation** : §L rendait le ledger exploitable par les helpers Python, mais pas encore par l'interface CLI. Une automatisation devait pouvoir fournir un fichier de tentatives sans modifier le code appelant.
+- **Changement applique** : ajout de `--correction-ledger-json`, borné à `--project`, avec validation stricte du JSON (`attempts_used_by_task` et `attempts_used_by_interaction_id` objets string -> entier >= 0). Le ledger alimente `correction_summary()` et `write_governance_json()`; aucun retry automatique n'est activé.
+- **Validation offline** : `test_contracts.py` 76/76 OK, `test_modes.py` 38/38 OK, `test_resilience.py` 31/31 OK, `test_phase0.py` 22/22 OK, `crew.py --help` OK, `ruff check crew scripts` OK, `py_compile` OK, `git diff --check` OK.
+- **Repo modifié** : oui.
+- **Prod alignée** : N/A (outil local).
+- **Validation runtime NIM** : non nécessaire pour cette slice CLI/JSON/tests offline uniquement.
+- **Commit** : *(ce commit).*
 ### 2026-07-16 — Phase 2 §L / Propagation du ledger de tentatives dans le JSON
 
 - **Scope** : `crew/contracts.py`, `scripts/test_contracts.py`, `README.md`, `DOCUMENT_MAITRE_PROJET.md`.

@@ -34,7 +34,7 @@ contraintes de securite.
 |---|---|---|
 | **Phase 0** | Hardening fondations (shell, permissions, install determ.) | ✅ CLOTUREE |
 | **Phase 1** | Refactor protocole + contrats de sortie | ✅ SOCLE STABILISE (§0 tool use NIM, §1 contrats, §2 modes CLI, §3 resilience NIM) |
-| **Phase 2** | Cooperation multi-agent reelle | 🔄 EN COURS (§A-§L ✅ gouvernance corrective, JSON versionne) |
+| **Phase 2** | Cooperation multi-agent reelle | 🔄 EN COURS (§A-§M ✅ gouvernance corrective, JSON versionne) |
 | Phase 3 | Intelligence depot lourd | ⏳ a venir |
 | Phase 4 | Qualite produit | ⏳ a venir |
 | Phase 5 | Vers autonomie plus elevee | ⏳ a venir |
@@ -172,6 +172,7 @@ suivant prend le relais automatiquement.
   `--correction-attempt-budget`. Le suivi interne des tentatives correctives
   peut aussi se faire par `interaction_id`, plus precis que `task_name`,
   et etre propage dans les rapports JSON via les helpers de gouvernance.
+  Le CLI peut charger ce ledger avec `--correction-ledger-json`.
   Pas de retry auto pour l'instant.
 - **Modes d'usage CLI** (Phase 1 §2 slice A) : `--mode read/edit/review/debug`
   adapte la composition du crew a la demande, evitant la sur-utilisation
@@ -275,6 +276,7 @@ python crew/crew.py "ta tache" --project C:/chemin/projet [options]
 | `--strict-contracts` | Retourne exit code 2 si les contrats sont violes |
 | `--governance-json` | Ecrit un rapport JSON de gouvernance sous le projet |
 | `--correction-attempt-budget` | Budget de relance par task expose dans le plan correctif (pas de retry auto) |
+| `--correction-ledger-json` | Lit un ledger JSON de tentatives correctives sous le projet (pas de retry auto) |
 | `--allow`, `-a` | Dossier supplementaire accessible |
 
 ### Validation runtime bornee

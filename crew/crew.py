@@ -27,6 +27,7 @@ Permissions (Phase 0) :
 """
 
 import argparse
+import json
 import os
 import subprocess
 import sys
@@ -768,6 +769,53 @@ def _resolve_governance_json_path(project_path: Path, target: str) -> Path:
     return full
 
 
+def _resolve_correction_ledger_json_path(project_path: Path, target: str) -> Path:
+    """Resolve a correction ledger input path inside the project root."""
+    ledger_path = Path(target)
+    full = (
+        ledger_path.resolve()
+        if ledger_path.is_absolute()
+        else (project_path / ledger_path).resolve()
+    )
+    project_root = project_path.resolve()
+    if full != project_root and project_root not in full.parents:
+        raise ValueError("correction ledger json path must stay inside --project")
+    return full
+
+
+def _validate_attempts_map(raw, field_name: str) -> dict[str, int]:
+    """Validate a correction-attempt ledger map."""
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise ValueError(f"{field_name} must be an object")
+    validated: dict[str, int] = {}
+    for key, value in raw.items():
+        if not isinstance(key, str) or not key:
+            raise ValueError(f"{field_name} keys must be non-empty strings")
+        if not isinstance(value, int) or value < 0:
+            raise ValueError(f"{field_name}.{key} must be an integer >= 0")
+        validated[key] = value
+    return validated
+
+
+def _load_correction_attempt_ledger(project_path: Path, target: str) -> tuple[dict[str, int], dict[str, int]]:
+    """Load correction attempts from a JSON file under the project root."""
+    ledger_path = _resolve_correction_ledger_json_path(project_path, target)
+    payload = json.loads(ledger_path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("correction ledger json must be an object")
+    attempts_used_by_task = _validate_attempts_map(
+        payload.get("attempts_used_by_task"),
+        "attempts_used_by_task",
+    )
+    attempts_used_by_interaction_id = _validate_attempts_map(
+        payload.get("attempts_used_by_interaction_id"),
+        "attempts_used_by_interaction_id",
+    )
+    return attempts_used_by_task, attempts_used_by_interaction_id
+
+
 VALID_MODES = ("read", "edit", "review", "debug")
 DEFAULT_MODE = "edit"
 
@@ -1030,6 +1078,9 @@ def main():
     parser.add_argument("--correction-attempt-budget", type=int, default=1,
                         help="Budget de relance par task expose dans le plan correctif. "
                              "N'active pas de retry automatique. Defaut : 1.")
+    parser.add_argument("--correction-ledger-json",
+                        help="Lit un ledger JSON de tentatives correctives sous --project. "
+                             "N'active pas de retry automatique.")
     parser.add_argument("--allow", "-a", action="append", default=[],
                         help="Dossier supplémentaire accessible (répétable). "
                              "Ex : --allow C:/autres/libs --allow D:/data")
@@ -1051,6 +1102,18 @@ def main():
     if not project_path.is_dir():
         print(f"ERREUR : {project_path} n'est pas un dossier.")
         sys.exit(1)
+
+    attempts_used_by_task: dict[str, int] = {}
+    attempts_used_by_interaction_id: dict[str, int] = {}
+    if args.correction_ledger_json:
+        try:
+            attempts_used_by_task, attempts_used_by_interaction_id = _load_correction_attempt_ledger(
+                project_path,
+                args.correction_ledger_json,
+            )
+        except Exception as e:
+            print(f"ERREUR : impossible de lire le ledger correctif JSON : {e}")
+            sys.exit(1)
 
     os.environ["CREW_PROJECT"] = str(project_path)
     if args.write:
@@ -1111,6 +1174,8 @@ def main():
     if tracker.should_block():
         print(tracker.correction_summary(
             attempts_budget=args.correction_attempt_budget,
+            attempts_used_by_task=attempts_used_by_task,
+            attempts_used_by_interaction_id=attempts_used_by_interaction_id,
         ))
     if args.governance_json:
         try:
@@ -1119,6 +1184,8 @@ def main():
                 governance_path,
                 strict_contracts=args.strict_contracts,
                 correction_attempt_budget=args.correction_attempt_budget,
+                attempts_used_by_task=attempts_used_by_task,
+                attempts_used_by_interaction_id=attempts_used_by_interaction_id,
             )
             print(f"[GOUVERNANCE] rapport JSON ecrit : {governance_path}")
         except Exception as e:

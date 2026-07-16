@@ -15,8 +15,10 @@ Couvre :
 Offline : pas de kickoff() LLM, on inspecte juste la structure du Crew construit.
 """
 
+import json
 import os
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).parent.parent
@@ -34,6 +36,8 @@ from crew.crew import (  # noqa: E402
     build_crew,
     VALID_MODES,
     DEFAULT_MODE,
+    _load_correction_attempt_ledger,
+    _resolve_correction_ledger_json_path,
     _resolve_governance_json_path,
 )
 from contracts import ContractTracker  # noqa: E402
@@ -85,6 +89,44 @@ except ValueError:
     check("governance json : chemin hors projet refuse", True)
 except Exception as e:
     check("governance json : chemin hors projet refuse", False, f"{type(e).__name__}: {e}")
+
+relative_ledger_path = _resolve_correction_ledger_json_path(ROOT, "reports/correction-ledger.json")
+check(
+    "correction ledger : chemin relatif reste dans le projet",
+    ROOT.resolve() in relative_ledger_path.parents,
+    str(relative_ledger_path),
+)
+try:
+    _resolve_correction_ledger_json_path(ROOT, str(ROOT.parent / "ledger.json"))
+    check("correction ledger : chemin hors projet refuse", False, "pas d'exception")
+except ValueError:
+    check("correction ledger : chemin hors projet refuse", True)
+except Exception as e:
+    check("correction ledger : chemin hors projet refuse", False, f"{type(e).__name__}: {e}")
+
+with tempfile.TemporaryDirectory(dir=ROOT) as tmpdir:
+    ledger_path = Path(tmpdir) / "ledger.json"
+    ledger_path.write_text(json.dumps({
+        "attempts_used_by_task": {"research": 1},
+        "attempts_used_by_interaction_id": {"research:TestAgent:request_task_rerun": 2},
+    }), encoding="utf-8")
+    by_task, by_interaction = _load_correction_attempt_ledger(ROOT, str(ledger_path))
+check("correction ledger : task chargee", by_task == {"research": 1}, str(by_task))
+check(
+    "correction ledger : interaction chargee",
+    by_interaction == {"research:TestAgent:request_task_rerun": 2},
+    str(by_interaction),
+)
+with tempfile.TemporaryDirectory(dir=ROOT) as tmpdir:
+    bad_ledger_path = Path(tmpdir) / "ledger.json"
+    bad_ledger_path.write_text(json.dumps({"attempts_used_by_task": {"research": -1}}), encoding="utf-8")
+    try:
+        _load_correction_attempt_ledger(ROOT, str(bad_ledger_path))
+        check("correction ledger : valeur negative refusee", False, "pas d'exception")
+    except ValueError:
+        check("correction ledger : valeur negative refusee", True)
+    except Exception as e:
+        check("correction ledger : valeur negative refusee", False, f"{type(e).__name__}: {e}")
 # ─── mode = "read" ───────────────────────────────────────────────────────────
 tracker = ContractTracker()
 crew = build_crew("explique ce projet", ROOT, deep=False,
