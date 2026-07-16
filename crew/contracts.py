@@ -28,6 +28,15 @@ VIOLATION_SEVERITY_BLOCKER = "blocker"
 ACTION_HINT_USE_REQUIRED_TOOL = "rerun_task_with_required_tool"
 ACTION_HINT_EXPAND_OUTPUT = "rerun_task_with_more_complete_output"
 ACTION_HINT_INCLUDE_REQUIRED_PATTERN = "rerun_task_with_required_verdict_or_pattern"
+INTERACTION_REQUEST_TASK_RERUN = "request_task_rerun"
+INTERACTION_REQUEST_OUTPUT_EXPANSION = "request_output_expansion"
+INTERACTION_REQUEST_VERDICT_REVISION = "request_verdict_revision"
+DEFAULT_CORRECTION_ATTEMPT_BUDGET = 1
+CORRECTION_PLAN_NO_ACTION = "NO_CORRECTION_NEEDED"
+CORRECTION_PLAN_AVAILABLE = "CORRECTION_AVAILABLE"
+CORRECTION_PLAN_BUDGET_EXHAUSTED = "CORRECTION_BUDGET_EXHAUSTED"
+INTERACTION_STATUS_PENDING = "PENDING"
+INTERACTION_STATUS_BLOCKED_BUDGET_EXHAUSTED = "BLOCKED_BUDGET_EXHAUSTED"
 
 
 @dataclass
@@ -36,6 +45,66 @@ class GovernanceReport:
     status: str
     violations_count: int
     should_block: bool
+
+
+@dataclass
+class CorrectiveAction:
+    """Bounded corrective action proposed after contract violations."""
+    task_name: str
+    agent: str
+    action_hint: str
+    interaction_type: str
+    interaction_id: str
+    reason: str
+    violations_count: int
+    attempts_budget: int = DEFAULT_CORRECTION_ATTEMPT_BUDGET
+    attempts_used: int = 0
+
+    @property
+    def attempts_remaining(self) -> int:
+        return max(0, self.attempts_budget - self.attempts_used)
+
+    @property
+    def should_rerun(self) -> bool:
+        return self.attempts_remaining > 0
+
+    def as_dict(self) -> dict:
+        """Return a stable machine-readable representation."""
+        return {
+            "task_name": self.task_name,
+            "agent": self.agent,
+            "action_hint": self.action_hint,
+            "interaction_type": self.interaction_type,
+            "interaction_id": self.interaction_id,
+            "reason": self.reason,
+            "violations_count": self.violations_count,
+            "attempts_budget": self.attempts_budget,
+            "attempts_used": self.attempts_used,
+            "attempts_remaining": self.attempts_remaining,
+            "should_rerun": self.should_rerun,
+        }
+
+    def as_interaction_dict(self) -> dict:
+        """Return a stable typed interaction envelope for future orchestration."""
+        status = (
+            INTERACTION_STATUS_PENDING
+            if self.should_rerun
+            else INTERACTION_STATUS_BLOCKED_BUDGET_EXHAUSTED
+        )
+        return {
+            "interaction_id": self.interaction_id,
+            "interaction_type": self.interaction_type,
+            "status": status,
+            "source": "contract_governance",
+            "target_agent": self.agent,
+            "task_name": self.task_name,
+            "action_hint": self.action_hint,
+            "reason": self.reason,
+            "attempts_budget": self.attempts_budget,
+            "attempts_used": self.attempts_used,
+            "attempts_remaining": self.attempts_remaining,
+            "should_dispatch": self.should_rerun,
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -308,7 +377,132 @@ class ContractTracker:
             return CONTRACT_BLOCK_EXIT_CODE
         return 0
 
-    def governance_payload(self, strict_contracts: bool = False) -> dict:
+    def corrective_actions(
+        self,
+        attempts_budget: int = DEFAULT_CORRECTION_ATTEMPT_BUDGET,
+        attempts_used_by_task: dict[str, int] | None = None,
+    ) -> list[CorrectiveAction]:
+        """Return one bounded corrective action per violated task."""
+        if attempts_budget < 0:
+            raise ValueError("attempts_budget must be >= 0")
+        attempts_used_by_task = attempts_used_by_task or {}
+        priority = {
+            ACTION_HINT_USE_REQUIRED_TOOL: 0,
+            ACTION_HINT_INCLUDE_REQUIRED_PATTERN: 1,
+            ACTION_HINT_EXPAND_OUTPUT: 2,
+        }
+        interaction_by_hint = {
+            ACTION_HINT_USE_REQUIRED_TOOL: INTERACTION_REQUEST_TASK_RERUN,
+            ACTION_HINT_INCLUDE_REQUIRED_PATTERN: INTERACTION_REQUEST_VERDICT_REVISION,
+            ACTION_HINT_EXPAND_OUTPUT: INTERACTION_REQUEST_OUTPUT_EXPANSION,
+        }
+        grouped: dict[tuple[str, str], list[Violation]] = {}
+        for violation in self.violations:
+            grouped.setdefault((violation.task_name, violation.agent), []).append(violation)
+
+        actions: list[CorrectiveAction] = []
+        for task_name, agent in sorted(grouped):
+            violations = grouped[(task_name, agent)]
+            selected = min(
+                violations,
+                key=lambda v: priority.get(v.action_hint, 99),
+            )
+            rules = ", ".join(v.rule for v in violations)
+            interaction_type = interaction_by_hint.get(
+                selected.action_hint,
+                INTERACTION_REQUEST_TASK_RERUN,
+            )
+            interaction_id = f"{task_name}:{agent}:{interaction_type}"
+            actions.append(CorrectiveAction(
+                task_name=task_name,
+                agent=agent,
+                action_hint=selected.action_hint,
+                interaction_type=interaction_type,
+                interaction_id=interaction_id,
+                reason=f"{len(violations)} violation(s): {rules}",
+                violations_count=len(violations),
+                attempts_budget=attempts_budget,
+                attempts_used=attempts_used_by_task.get(task_name, 0),
+            ))
+        return actions
+
+    def correction_summary(
+        self,
+        attempts_budget: int = DEFAULT_CORRECTION_ATTEMPT_BUDGET,
+        attempts_used_by_task: dict[str, int] | None = None,
+    ) -> str:
+        """Return a human-readable bounded correction plan."""
+        actions = self.corrective_actions(
+            attempts_budget=attempts_budget,
+            attempts_used_by_task=attempts_used_by_task,
+        )
+        if not actions:
+            return "[CORRECTION] Aucune correction contractuelle necessaire."
+
+        lines = [
+            "[CORRECTION] Plan correctif borne : "
+            f"{len(actions)} task(s) candidate(s), budget={attempts_budget} relance(s)/task."
+        ]
+        for action in actions:
+            status = "relance autorisee" if action.should_rerun else "budget epuise"
+            lines.append(
+                f"  - {action.task_name} ({action.agent}) : {status}; "
+                f"action={action.action_hint}; "
+                f"interaction={action.interaction_type}; "
+                f"id={action.interaction_id}; "
+                f"tentatives={action.attempts_used}/{action.attempts_budget}; "
+                f"raison={action.reason}."
+            )
+        return "\n".join(lines)
+
+    def corrective_interactions(
+        self,
+        attempts_budget: int = DEFAULT_CORRECTION_ATTEMPT_BUDGET,
+        attempts_used_by_task: dict[str, int] | None = None,
+    ) -> list[dict]:
+        """Return typed interaction envelopes derived from corrective actions."""
+        return [
+            action.as_interaction_dict()
+            for action in self.corrective_actions(
+                attempts_budget=attempts_budget,
+                attempts_used_by_task=attempts_used_by_task,
+            )
+        ]
+
+    def correction_plan_payload(
+        self,
+        attempts_budget: int = DEFAULT_CORRECTION_ATTEMPT_BUDGET,
+        attempts_used_by_task: dict[str, int] | None = None,
+    ) -> dict:
+        """Return a compact machine-readable correction plan summary."""
+        actions = self.corrective_actions(
+            attempts_budget=attempts_budget,
+            attempts_used_by_task=attempts_used_by_task,
+        )
+        rerunnable_count = sum(1 for action in actions if action.should_rerun)
+        exhausted_count = len(actions) - rerunnable_count
+
+        if not actions:
+            status = CORRECTION_PLAN_NO_ACTION
+        elif rerunnable_count:
+            status = CORRECTION_PLAN_AVAILABLE
+        else:
+            status = CORRECTION_PLAN_BUDGET_EXHAUSTED
+
+        return {
+            "status": status,
+            "actions_count": len(actions),
+            "rerunnable_count": rerunnable_count,
+            "exhausted_count": exhausted_count,
+            "has_rerunnable_actions": rerunnable_count > 0,
+            "attempts_budget": attempts_budget,
+        }
+
+    def governance_payload(
+        self,
+        strict_contracts: bool = False,
+        correction_attempt_budget: int = DEFAULT_CORRECTION_ATTEMPT_BUDGET,
+    ) -> dict:
         """Return a stable JSON-ready governance payload."""
         report = self.governance_report()
         return {
@@ -317,25 +511,52 @@ class ContractTracker:
             "violations_count": report.violations_count,
             "exit_code": self.exit_code(strict_contracts=strict_contracts),
             "strict_contracts": strict_contracts,
+            "correction_attempt_budget": correction_attempt_budget,
+            "correction_plan": self.correction_plan_payload(
+                attempts_budget=correction_attempt_budget,
+            ),
+            "corrective_interactions": self.corrective_interactions(
+                attempts_budget=correction_attempt_budget,
+            ),
+            "corrective_actions": [
+                action.as_dict()
+                for action in self.corrective_actions(
+                    attempts_budget=correction_attempt_budget,
+                )
+            ],
             "violations": [violation.as_dict() for violation in self.violations],
         }
 
-    def governance_json(self, strict_contracts: bool = False) -> str:
+    def governance_json(
+        self,
+        strict_contracts: bool = False,
+        correction_attempt_budget: int = DEFAULT_CORRECTION_ATTEMPT_BUDGET,
+    ) -> str:
         """Return the governance payload as deterministic JSON."""
         return json.dumps(
-            self.governance_payload(strict_contracts=strict_contracts),
+            self.governance_payload(
+                strict_contracts=strict_contracts,
+                correction_attempt_budget=correction_attempt_budget,
+            ),
             ensure_ascii=False,
             indent=2,
             sort_keys=True,
         )
 
-    def write_governance_json(self, path: str | Path,
-                              strict_contracts: bool = False) -> Path:
+    def write_governance_json(
+        self,
+        path: str | Path,
+        strict_contracts: bool = False,
+        correction_attempt_budget: int = DEFAULT_CORRECTION_ATTEMPT_BUDGET,
+    ) -> Path:
         """Write the governance payload to disk and return the path."""
         output_path = Path(path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(
-            self.governance_json(strict_contracts=strict_contracts) + "\n",
+            self.governance_json(
+                strict_contracts=strict_contracts,
+                correction_attempt_budget=correction_attempt_budget,
+            ) + "\n",
             encoding="utf-8",
         )
         return output_path

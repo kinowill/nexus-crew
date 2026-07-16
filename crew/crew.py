@@ -999,7 +999,7 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Modes (--mode) :\n"
-            "  read    Compréhension / audit sans modification (Researcher + Architect)\n"
+            "  read    Compréhension / audit sans modification (Researcher seul)\n"
             "  edit    Modification propre avec validation (pipeline complet, défaut)\n"
             "  review  Relecture d'un état existant (Researcher + Critic + synthèse)\n"
             "  debug   Investigation + correction (alias edit pour l'instant)\n\n"
@@ -1027,10 +1027,17 @@ def main():
                              "Par défaut, les violations sont imprimées sans changer l'exit code.")
     parser.add_argument("--governance-json",
                         help="Ecrit le rapport de gouvernance JSON dans un chemin sous --project.")
+    parser.add_argument("--correction-attempt-budget", type=int, default=1,
+                        help="Budget de relance par task expose dans le plan correctif. "
+                             "N'active pas de retry automatique. Defaut : 1.")
     parser.add_argument("--allow", "-a", action="append", default=[],
                         help="Dossier supplémentaire accessible (répétable). "
                              "Ex : --allow C:/autres/libs --allow D:/data")
     args = parser.parse_args()
+
+    if args.correction_attempt_budget < 0:
+        print("ERREUR : --correction-attempt-budget doit etre >= 0.")
+        sys.exit(1)
 
     # Garde-fou : en mode read ou review, --write n'a aucun sens (pas de Coder
     # dans le pipeline). On avertit et on continue — l'argparse garde ne suffit
@@ -1101,12 +1108,17 @@ def main():
     print()
     print(tracker.summary())
     print(tracker.governance_summary())
+    if tracker.should_block():
+        print(tracker.correction_summary(
+            attempts_budget=args.correction_attempt_budget,
+        ))
     if args.governance_json:
         try:
             governance_path = _resolve_governance_json_path(project_path, args.governance_json)
             tracker.write_governance_json(
                 governance_path,
                 strict_contracts=args.strict_contracts,
+                correction_attempt_budget=args.correction_attempt_budget,
             )
             print(f"[GOUVERNANCE] rapport JSON ecrit : {governance_path}")
         except Exception as e:

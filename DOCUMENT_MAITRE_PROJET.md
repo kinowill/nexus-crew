@@ -762,6 +762,12 @@ Autrement dit :
 - **§A — État de gouvernance après contrats** : ✅ FAIT (2026-07-09). `ContractTracker` produit désormais un `GovernanceReport` final : `OK` sans violation, `BLOCKED_CONTRACT_VIOLATIONS` si un contrat est violé. Le CLI affiche toujours cet état après le résumé des contrats. `--strict-contracts` permet aux automatisations de retourner exit code 2 en cas de blocage, sans changer le comportement par défaut. Pas de retry automatique dans cette slice : l'objectif est de rendre l'état final non ambigu avant les boucles correctives Phase 2 suivantes.
 - **§B — Rapport de gouvernance JSON** : ✅ FAIT (2026-07-09). `ContractTracker` expose `governance_payload()`, `governance_json()` et `write_governance_json()`. Le CLI ajoute `--governance-json <chemin>` pour écrire un rapport machine-readable sous `--project`, avec garde-fou qui refuse les chemins hors projet. Cette slice trace l'état et les violations sans modifier la composition des agents, sans retry automatique et sans élargir les permissions.
 - **§C — Violations typées pour boucles correctives** : ✅ FAIT (2026-07-09). Les violations exposent maintenant `severity` (`blocker`) et `action_hint` (`rerun_task_with_required_tool`, `rerun_task_with_more_complete_output`, `rerun_task_with_required_verdict_or_pattern`). Le payload JSON conserve ces champs pour préparer les futures boucles de correction sans activer de retry automatique dans cette slice.
+- **§D — Plan correctif borne apres violation de contrat** : ✅ FAIT (2026-07-16). `ContractTracker` produit maintenant une action corrective par task violee, avec priorite deterministe (`required_tools` avant verdict/pattern, puis longueur), budget de relance par task et etat `should_rerun`. Le CLI imprime ce plan quand la gouvernance bloque, et le JSON expose `corrective_actions`. Pas de relance LLM automatique dans cette slice : elle prepare la boucle corrective sans changer la composition CrewAI ni les permissions.
+- **§E — Budget correctif configurable CLI/JSON** : ✅ FAIT (2026-07-16). Le CLI expose `--correction-attempt-budget` pour piloter le budget annonce dans le plan correctif et le rapport JSON. La valeur doit etre >= 0. Ce flag ne declenche toujours aucune relance LLM automatique; il rend seulement la decision corrective parametree et traçable pour une future automatisation.
+- **§F — Interactions correctives typees dans la gouvernance** : ✅ FAIT (2026-07-16). Chaque `CorrectiveAction` expose maintenant un `interaction_type` stable (`request_task_rerun`, `request_verdict_revision`, `request_output_expansion`) derive de l'action corrective. Le CLI et le JSON rendent donc lisible le type d'interaction a effectuer, sans encore executer de boucle inter-agent automatique.
+- **§G — Identifiants stables d'interactions correctives** : ✅ FAIT (2026-07-16). Chaque action corrective expose maintenant `interaction_id` sous la forme `task:agent:interaction_type`. Ce champ rend les futures relances ou validations traçables entre CLI, JSON et journal sans activer de retry automatique.
+- **§H — Résumé machine-readable du plan correctif** : ✅ FAIT (2026-07-16). Le rapport JSON expose maintenant `correction_plan` avec `status`, compte d'actions, nombre relançable, nombre épuisé et budget. Ce résumé évite aux intégrations de recalculer l'état depuis `corrective_actions`, sans déclencher de retry automatique.
+- **§I — Enveloppes d'interactions correctives JSON** : ✅ FAIT (2026-07-16). Les actions correctives peuvent maintenant être exposées sous `corrective_interactions`, avec `interaction_id`, `interaction_type`, `status`, source, agent cible, task, raison et état de dispatch. C'est une préparation traçable des futures interactions inter-agents, sans exécution automatique.
 - autoriser les interactions inter-agents utiles ;
 - les typer proprement ;
 - borner les boucles ;
@@ -836,7 +842,7 @@ Pour le développeur :
 - `scripts/test_phase0.py` — validation statique Phase 0 (22/22)
 - `scripts/test_resilience.py` — tests unitaires résilience NIM §3 + §3bis (31/31)
 - `scripts/test_modes.py` — tests unitaires modes d'usage Phase 1 §2 + garde chemin JSON (33/33)
-- `scripts/test_contracts.py` — tests contrats + rapports de gouvernance Phase 2 §A/§B/§C (21/21)
+- `scripts/test_contracts.py` — tests contrats + rapports de gouvernance Phase 2 §A/§B/§C/§D/§E/§F/§G/§H/§I (64/64)
 - `test_phase0.bat` — lanceur Windows pour `test_phase0.py`
 
 **Scripts de diagnostic NIM (avec réseau, coûteux en tokens)**
@@ -858,6 +864,88 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 > Trace des modifications apportées au projet, conformément au protocole
 > (distinction repo modifié / prod alignée / validation réelle).
 > Les entrées les plus récentes sont en haut.
+
+### 2026-07-16 — Phase 2 §I / Enveloppes d'interactions correctives JSON
+
+- **Scope** : `crew/contracts.py`, `scripts/test_contracts.py`, `README.md`, `DOCUMENT_MAITRE_PROJET.md`.
+- **Motivation** : après `interaction_type`, `interaction_id` et `correction_plan`, le JSON savait quoi corriger mais ne fournissait pas encore d'enveloppe d'interaction directement traçable. La future boucle inter-agents a besoin d'un objet stable à dispatcher ou à bloquer.
+- **Changement applique** : ajout de `CorrectiveAction.as_interaction_dict()` et `ContractTracker.corrective_interactions()`. Le rapport JSON expose `corrective_interactions` avec `status` (`PENDING` ou `BLOCKED_BUDGET_EXHAUSTED`), `source`, `target_agent`, task, raison, budget et `should_dispatch`.
+- **Validation offline** : `test_contracts.py` 64/64 OK, `test_modes.py` 33/33 OK, `test_resilience.py` 31/31 OK, `test_phase0.py` 22/22 OK, `ruff check crew scripts` OK, `py_compile` OK, `git diff --check` OK.
+- **Repo modifié** : oui.
+- **Prod alignée** : N/A (outil local).
+- **Validation runtime NIM** : non nécessaire pour cette slice (contrats/JSON/tests offline uniquement).
+- **Commit** : *(ce commit).*
+
+### 2026-07-16 — Phase 2 §H / Résumé machine-readable du plan correctif
+
+- **Scope** : `crew/contracts.py`, `scripts/test_contracts.py`, `README.md`, `DOCUMENT_MAITRE_PROJET.md`.
+- **Motivation** : après `corrective_actions`, les intégrations devaient encore recalculer elles-mêmes si une correction était disponible, inutile ou bloquée par budget. Le JSON avait besoin d'un résumé stable et lisible sans activer de retry automatique.
+- **Changement applique** : ajout de `ContractTracker.correction_plan_payload()` et du bloc JSON `correction_plan` (`status`, `actions_count`, `rerunnable_count`, `exhausted_count`, `has_rerunnable_actions`, `attempts_budget`). Les détails restent dans `corrective_actions`.
+- **Validation offline** : `test_contracts.py` 53/53 OK, `test_modes.py` 33/33 OK, `test_resilience.py` 31/31 OK, `test_phase0.py` 22/22 OK, `ruff check crew scripts` OK, `py_compile` OK, `crew.py --help` OK, `git diff --check` OK.
+- **Repo modifié** : oui.
+- **Prod alignée** : N/A (outil local).
+- **Validation runtime NIM** : non nécessaire pour cette slice (contrats/JSON/tests offline uniquement).
+- **Commit** : *(ce commit).*
+
+### 2026-07-16 — Phase 2 §G / Identifiants stables d'interactions correctives
+
+- **Scope** : `crew/contracts.py`, `scripts/test_contracts.py`, `README.md`, `DOCUMENT_MAITRE_PROJET.md`.
+- **Motivation** : §F rendait le type d'interaction lisible, mais pas encore adressable. Pour tracer une future relance ou validation corrective, chaque interaction doit avoir une cle stable dans le CLI et le JSON.
+- **Changement applique** : `CorrectiveAction` expose `interaction_id` au format `task:agent:interaction_type`; le resume CLI et le JSON le conservent. Tests ajoutes pour les trois types d'interaction corrective.
+- **Validation offline** : `test_phase0.py` 22/22 OK, `test_modes.py` 33/33 OK, `test_resilience.py` 31/31 OK, `test_contracts.py` 45/45 OK, `ruff check crew scripts` OK, `git diff --check` OK.
+- **Validation runtime NIM reelle** : non effectuee; changement gouvernance/reporting uniquement, sans nouvel appel LLM.
+- **Repo modifie** : oui.
+- **Prod alignee** : N/A.
+- **Validation reelle effectuee** : oui pour validation offline automatisee; non pour runtime NIM.
+- **Commit** : *(ce commit).*
+
+### 2026-07-16 — Alignement post-audit §D/§E/§F
+
+- **Scope** : `crew/crew.py`, `README.md`, `DOCUMENT_MAITRE_PROJET.md`.
+- **Motivation** : l'audit lecture seule apres §F a repere trois incoherences de suivi : aide CLI `read` encore annoncee `Researcher + Architect`, tableau README Phase 2 limite a §A, et formulation README redondante sur le budget correctif.
+- **Changement applique** : aide CLI alignee sur le code (`read` = Researcher seul), tableau README Phase 2 aligne sur §A-§F, formulation du budget correctif simplifiee. Aucun comportement runtime modifie.
+- **Validation offline** : `crew.py --help` OK, `git diff --check` OK. Couvert ensuite par validation complete §G : `test_phase0.py` 22/22, `test_modes.py` 33/33, `test_resilience.py` 31/31, `test_contracts.py` 45/45, `ruff check crew scripts` OK.
+- **Validation runtime NIM reelle** : non effectuee; correction documentation/aide CLI uniquement.
+- **Repo modifie** : oui.
+- **Prod alignee** : N/A.
+- **Validation reelle effectuee** : oui pour validation offline automatisee; non pour runtime NIM.
+- **Commit** : *(ce commit).*
+
+### 2026-07-16 — Phase 2 §F / Interactions correctives typees
+
+- **Scope** : `crew/contracts.py`, `scripts/test_contracts.py`, `README.md`, `DOCUMENT_MAITRE_PROJET.md`.
+- **Motivation** : §D/§E rendent les corrections visibles et bornees, mais il manquait encore un type d'interaction explicite pour preparer les futures boucles inter-agents sans reintroduire de delegation libre.
+- **Changement applique** : `CorrectiveAction` expose `interaction_type`. Les mappings sont deterministes : outil requis -> `request_task_rerun`, verdict/pattern manquant -> `request_verdict_revision`, sortie trop courte -> `request_output_expansion`. Le resume CLI et le JSON incluent ce champ.
+- **Validation offline** : `test_phase0.py` 22/22 OK, `test_modes.py` 33/33 OK, `test_resilience.py` 31/31 OK, `test_contracts.py` 41/41 OK, `ruff check crew scripts` OK, `git diff --check` OK.
+- **Validation runtime NIM reelle** : non effectuee dans cette session; changement gouvernance/reporting uniquement, sans nouvel appel LLM.
+- **Repo modifie** : oui.
+- **Prod alignee** : N/A.
+- **Validation reelle effectuee** : oui pour validation offline automatisee; non pour runtime NIM.
+- **Commit** : *(ce commit).*
+
+### 2026-07-16 — Phase 2 §E / Budget correctif configurable CLI et JSON
+
+- **Scope** : `crew/contracts.py`, `crew/crew.py`, `scripts/test_contracts.py`, `README.md`, `DOCUMENT_MAITRE_PROJET.md`.
+- **Motivation** : §D produisait un plan correctif borne, mais le budget etait fixe a 1. Pour qu'une automatisation ou une session longue puisse reprendre clairement l'etat, le budget doit etre explicite et parametrable sans activer de retry automatique.
+- **Changement applique** : `governance_json()` et `write_governance_json()` acceptent `correction_attempt_budget`; le CLI ajoute `--correction-attempt-budget` avec garde-fou `>= 0`; le resume correctif et le JSON utilisent ce budget.
+- **Validation offline** : `test_phase0.py` 22/22 OK, `test_modes.py` 33/33 OK, `test_resilience.py` 31/31 OK, `test_contracts.py` 36/36 OK, `ruff check crew scripts` OK, `git diff --check` OK, `crew.py --help` OK.
+- **Validation runtime NIM reelle** : non effectuee dans cette session; changement CLI/reporting uniquement, sans nouvel appel LLM.
+- **Repo modifie** : oui.
+- **Prod alignee** : N/A.
+- **Validation reelle effectuee** : oui pour validation offline automatisee; non pour runtime NIM.
+- **Commit** : *(ce commit).*
+
+### 2026-07-16 — Phase 2 §D / Plan correctif borne apres violation de contrat
+
+- **Scope** : `crew/contracts.py`, `crew/crew.py`, `scripts/test_contracts.py`, `README.md`, `DOCUMENT_MAITRE_PROJET.md`.
+- **Motivation** : les violations typees de §C donnaient l'action attendue, mais pas encore une decision de correction exploitable par le CLI ou par une automatisation. Il fallait franchir une etape sans activer trop tot de relance LLM automatique.
+- **Changement applique** : ajout de `CorrectiveAction` et de `ContractTracker.corrective_actions()` / `correction_summary()`. Les violations sont regroupees par task, priorisees de facon deterministe (`required_tools` puis verdict/pattern puis longueur), bornees par un budget de relance par task et exposees dans `governance_payload()` sous `corrective_actions`. Le CLI imprime le plan correctif uniquement quand la gouvernance bloque.
+- **Validation offline** : `test_phase0.py` 22/22 OK, `test_modes.py` 33/33 OK, `test_resilience.py` 31/31 OK, `test_contracts.py` 33/33 OK, `ruff check crew scripts` OK, `git diff --check` OK.
+- **Validation runtime NIM reelle** : non effectuee dans cette session; changement gouvernance/reporting uniquement, sans nouvel appel LLM.
+- **Repo modifie** : oui.
+- **Prod alignee** : N/A.
+- **Validation reelle effectuee** : oui pour validation offline automatisee; non pour runtime NIM.
+- **Commit** : *(ce commit).*
 
 ### 2026-07-09 — Phase 2 §C / Violations typées
 
