@@ -125,6 +125,11 @@ exhausted_plan = bad_tracker.correction_plan_payload(
 )
 check("correction plan : budget epuise", exhausted_plan["status"] == CORRECTION_PLAN_BUDGET_EXHAUSTED, str(exhausted_plan))
 check("correction plan : compte epuise", exhausted_plan["exhausted_count"] == 1, str(exhausted_plan))
+interaction_attempts_plan = bad_tracker.correction_plan_payload(
+    attempts_budget=1,
+    attempts_used_by_interaction_id={"research:TestAgent:request_task_rerun": 1},
+)
+check("correction plan : budget epuise par interaction id", interaction_attempts_plan["status"] == CORRECTION_PLAN_BUDGET_EXHAUSTED, str(interaction_attempts_plan))
 actions = bad_tracker.corrective_actions()
 check("correction : une action par task violee", len(actions) == 1, str(actions))
 check("correction : task research ciblee", actions[0].task_name == "research", actions[0].task_name)
@@ -143,11 +148,32 @@ check("interaction envelope : target agent", interaction["target_agent"] == "Tes
 check("interaction envelope : dispatch autorise", interaction["should_dispatch"])
 tracker_interactions = bad_tracker.corrective_interactions()
 check("tracker interactions : une enveloppe", len(tracker_interactions) == 1, str(tracker_interactions))
+interaction_exhausted_action = bad_tracker.corrective_actions(
+    attempts_budget=1,
+    attempts_used_by_interaction_id={actions[0].interaction_id: 1},
+)[0]
+check("correction : interaction id epuise relance", not interaction_exhausted_action.should_rerun)
+interaction_override_action = bad_tracker.corrective_actions(
+    attempts_budget=1,
+    attempts_used_by_task={"research": 1},
+    attempts_used_by_interaction_id={actions[0].interaction_id: 0},
+)[0]
+check("correction : interaction id prioritaire sur task", interaction_override_action.should_rerun)
+interaction_exhausted_envelopes = bad_tracker.corrective_interactions(
+    attempts_budget=1,
+    attempts_used_by_interaction_id={actions[0].interaction_id: 1},
+)
+check("tracker interactions : budget interaction id applique", interaction_exhausted_envelopes[0]["status"] == INTERACTION_STATUS_BLOCKED_BUDGET_EXHAUSTED, str(interaction_exhausted_envelopes))
 exhausted_action = bad_tracker.corrective_actions(
     attempts_budget=1,
     attempts_used_by_task={"research": 1},
 )[0]
 check("correction : budget epuise bloque relance", not exhausted_action.should_rerun)
+summary_by_interaction_id = bad_tracker.correction_summary(
+    attempts_budget=1,
+    attempts_used_by_interaction_id={actions[0].interaction_id: 1},
+)
+check("correction summary : budget interaction id visible", "budget epuise" in summary_by_interaction_id)
 exhausted_interaction = exhausted_action.as_interaction_dict()
 check("interaction envelope : statut budget epuise", exhausted_interaction["status"] == INTERACTION_STATUS_BLOCKED_BUDGET_EXHAUSTED, str(exhausted_interaction))
 check("interaction envelope : dispatch bloque", not exhausted_interaction["should_dispatch"])

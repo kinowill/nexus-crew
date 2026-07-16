@@ -382,11 +382,13 @@ class ContractTracker:
         self,
         attempts_budget: int = DEFAULT_CORRECTION_ATTEMPT_BUDGET,
         attempts_used_by_task: dict[str, int] | None = None,
+        attempts_used_by_interaction_id: dict[str, int] | None = None,
     ) -> list[CorrectiveAction]:
         """Return one bounded corrective action per violated task."""
         if attempts_budget < 0:
             raise ValueError("attempts_budget must be >= 0")
         attempts_used_by_task = attempts_used_by_task or {}
+        attempts_used_by_interaction_id = attempts_used_by_interaction_id or {}
         priority = {
             ACTION_HINT_USE_REQUIRED_TOOL: 0,
             ACTION_HINT_INCLUDE_REQUIRED_PATTERN: 1,
@@ -414,6 +416,10 @@ class ContractTracker:
                 INTERACTION_REQUEST_TASK_RERUN,
             )
             interaction_id = f"{task_name}:{agent}:{interaction_type}"
+            attempts_used = attempts_used_by_interaction_id.get(
+                interaction_id,
+                attempts_used_by_task.get(task_name, 0),
+            )
             actions.append(CorrectiveAction(
                 task_name=task_name,
                 agent=agent,
@@ -423,7 +429,7 @@ class ContractTracker:
                 reason=f"{len(violations)} violation(s): {rules}",
                 violations_count=len(violations),
                 attempts_budget=attempts_budget,
-                attempts_used=attempts_used_by_task.get(task_name, 0),
+                attempts_used=attempts_used,
             ))
         return actions
 
@@ -431,11 +437,13 @@ class ContractTracker:
         self,
         attempts_budget: int = DEFAULT_CORRECTION_ATTEMPT_BUDGET,
         attempts_used_by_task: dict[str, int] | None = None,
+        attempts_used_by_interaction_id: dict[str, int] | None = None,
     ) -> str:
         """Return a human-readable bounded correction plan."""
         actions = self.corrective_actions(
             attempts_budget=attempts_budget,
             attempts_used_by_task=attempts_used_by_task,
+            attempts_used_by_interaction_id=attempts_used_by_interaction_id,
         )
         if not actions:
             return "[CORRECTION] Aucune correction contractuelle necessaire."
@@ -460,6 +468,7 @@ class ContractTracker:
         self,
         attempts_budget: int = DEFAULT_CORRECTION_ATTEMPT_BUDGET,
         attempts_used_by_task: dict[str, int] | None = None,
+        attempts_used_by_interaction_id: dict[str, int] | None = None,
     ) -> list[dict]:
         """Return typed interaction envelopes derived from corrective actions."""
         return [
@@ -467,6 +476,7 @@ class ContractTracker:
             for action in self.corrective_actions(
                 attempts_budget=attempts_budget,
                 attempts_used_by_task=attempts_used_by_task,
+                attempts_used_by_interaction_id=attempts_used_by_interaction_id,
             )
         ]
 
@@ -474,11 +484,13 @@ class ContractTracker:
         self,
         attempts_budget: int = DEFAULT_CORRECTION_ATTEMPT_BUDGET,
         attempts_used_by_task: dict[str, int] | None = None,
+        attempts_used_by_interaction_id: dict[str, int] | None = None,
     ) -> dict:
         """Return a compact machine-readable correction plan summary."""
         actions = self.corrective_actions(
             attempts_budget=attempts_budget,
             attempts_used_by_task=attempts_used_by_task,
+            attempts_used_by_interaction_id=attempts_used_by_interaction_id,
         )
         rerunnable_count = sum(1 for action in actions if action.should_rerun)
         exhausted_count = len(actions) - rerunnable_count

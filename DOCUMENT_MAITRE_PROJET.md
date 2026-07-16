@@ -769,6 +769,7 @@ Autrement dit :
 - **§H — Résumé machine-readable du plan correctif** : ✅ FAIT (2026-07-16). Le rapport JSON expose maintenant `correction_plan` avec `status`, compte d'actions, nombre relançable, nombre épuisé et budget. Ce résumé évite aux intégrations de recalculer l'état depuis `corrective_actions`, sans déclencher de retry automatique.
 - **§I — Enveloppes d'interactions correctives JSON** : ✅ FAIT (2026-07-16). Les actions correctives peuvent maintenant être exposées sous `corrective_interactions`, avec `interaction_id`, `interaction_type`, `status`, source, agent cible, task, raison et état de dispatch. C'est une préparation traçable des futures interactions inter-agents, sans exécution automatique.
 - **§J — Version de schéma du rapport de gouvernance** : ✅ FAIT (2026-07-16). Le payload de gouvernance expose maintenant `schema_version` afin que les outils et futures boucles d'orchestration puissent reconnaître explicitement le format JSON consommé.
+- **§K — Suivi des tentatives par interaction corrective** : ✅ FAIT (2026-07-16). Les helpers correctifs acceptent maintenant `attempts_used_by_interaction_id`, prioritaire sur `attempts_used_by_task`, afin de suivre les budgets sur l'identifiant stable `interaction_id` plutôt que sur un nom de task trop grossier.
 - autoriser les interactions inter-agents utiles ;
 - les typer proprement ;
 - borner les boucles ;
@@ -843,7 +844,7 @@ Pour le développeur :
 - `scripts/test_phase0.py` — validation statique Phase 0 (22/22)
 - `scripts/test_resilience.py` — tests unitaires résilience NIM §3 + §3bis (31/31)
 - `scripts/test_modes.py` — tests unitaires modes d'usage Phase 1 §2 + garde chemin JSON (33/33)
-- `scripts/test_contracts.py` — tests contrats + rapports de gouvernance Phase 2 §A/§B/§C/§D/§E/§F/§G/§H/§I/§J (66/66)
+- `scripts/test_contracts.py` — tests contrats + rapports de gouvernance Phase 2 §A/§B/§C/§D/§E/§F/§G/§H/§I/§J/§K (71/71)
 - `test_phase0.bat` — lanceur Windows pour `test_phase0.py`
 
 **Scripts de diagnostic NIM (avec réseau, coûteux en tokens)**
@@ -866,6 +867,16 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 > (distinction repo modifié / prod alignée / validation réelle).
 > Les entrées les plus récentes sont en haut.
 
+### 2026-07-16 — Phase 2 §K / Suivi des tentatives par interaction corrective
+
+- **Scope** : `crew/contracts.py`, `scripts/test_contracts.py`, `README.md`, `DOCUMENT_MAITRE_PROJET.md`.
+- **Motivation** : après l'ajout de `interaction_id`, continuer à compter les tentatives uniquement par `task_name` restait trop grossier. Deux actions correctives peuvent viser la même task avec des agents ou types d'interaction différents.
+- **Changement applique** : `corrective_actions()`, `correction_summary()`, `corrective_interactions()` et `correction_plan_payload()` acceptent `attempts_used_by_interaction_id`. Cette source est prioritaire sur `attempts_used_by_task`, qui reste compatible. Aucune relance automatique n'est activée.
+- **Validation offline** : `test_contracts.py` 71/71 OK, `test_modes.py` 33/33 OK, `test_resilience.py` 31/31 OK, `test_phase0.py` 22/22 OK, `ruff check crew scripts` OK, `py_compile` OK, `git diff --check` OK.
+- **Repo modifié** : oui.
+- **Prod alignée** : N/A (outil local).
+- **Validation runtime NIM** : non nécessaire pour cette slice (contrats/JSON/tests offline uniquement).
+- **Commit** : *(ce commit).*
 ### 2026-07-16 — Phase 2 §J / Version de schéma du rapport de gouvernance
 
 - **Scope** : `crew/contracts.py`, `scripts/test_contracts.py`, `README.md`, `DOCUMENT_MAITRE_PROJET.md`.
