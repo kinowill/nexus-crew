@@ -935,11 +935,11 @@ def _correction_dispatch_payload(
         next_attempts_by_interaction_id[interaction_id] = interaction["attempts_used"] + 1
 
     if dispatchable:
-        status = "DISPATCH_AVAILABLE"
+        status = CORRECTION_DISPATCH_AVAILABLE
     elif interactions:
-        status = "DISPATCH_BLOCKED_BUDGET_EXHAUSTED"
+        status = CORRECTION_DISPATCH_BLOCKED_BUDGET_EXHAUSTED
     else:
-        status = "NO_DISPATCH_NEEDED"
+        status = CORRECTION_DISPATCH_NO_DISPATCH_NEEDED
 
     return {
         "schema_version": CORRECTION_DISPATCH_SCHEMA_VERSION,
@@ -1012,6 +1012,9 @@ def _write_correction_next_ledger_json(
 
 CORRECTION_LEDGER_SCHEMA_VERSION = 1
 CORRECTION_DISPATCH_SCHEMA_VERSION = 1
+CORRECTION_DISPATCH_AVAILABLE = "DISPATCH_AVAILABLE"
+CORRECTION_DISPATCH_BLOCKED_BUDGET_EXHAUSTED = "DISPATCH_BLOCKED_BUDGET_EXHAUSTED"
+CORRECTION_DISPATCH_NO_DISPATCH_NEEDED = "NO_DISPATCH_NEEDED"
 VALID_MODES = ("read", "edit", "review", "debug")
 DEFAULT_MODE = "edit"
 

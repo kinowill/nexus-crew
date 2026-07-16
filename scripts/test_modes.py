@@ -37,6 +37,9 @@ from crew.crew import (  # noqa: E402
     build_crew,
     VALID_MODES,
     DEFAULT_MODE,
+    CORRECTION_DISPATCH_AVAILABLE,
+    CORRECTION_DISPATCH_BLOCKED_BUDGET_EXHAUSTED,
+    CORRECTION_DISPATCH_NO_DISPATCH_NEEDED,
     CORRECTION_DISPATCH_SCHEMA_VERSION,
     CORRECTION_LEDGER_SCHEMA_VERSION,
     _correction_attempt_ledger_payload,
@@ -95,6 +98,14 @@ check(
     "constantes : DEFAULT_MODE == 'edit' (non-regression)",
     DEFAULT_MODE == "edit",
     f"val={DEFAULT_MODE!r}",
+)
+check(
+    "constantes : statuts dispatch correctif stables",
+    {
+        CORRECTION_DISPATCH_AVAILABLE,
+        CORRECTION_DISPATCH_BLOCKED_BUDGET_EXHAUSTED,
+        CORRECTION_DISPATCH_NO_DISPATCH_NEEDED,
+    } == {"DISPATCH_AVAILABLE", "DISPATCH_BLOCKED_BUDGET_EXHAUSTED", "NO_DISPATCH_NEEDED"},
 )
 
 
@@ -244,7 +255,7 @@ dispatch_payload = _correction_dispatch_payload(
     attempts_used_by_task={"research": 1},
 )
 check("correction dispatch : schema version present", dispatch_payload["schema_version"] == CORRECTION_DISPATCH_SCHEMA_VERSION)
-check("correction dispatch : dispatch disponible", dispatch_payload["status"] == "DISPATCH_AVAILABLE", str(dispatch_payload))
+check("correction dispatch : dispatch disponible", dispatch_payload["status"] == CORRECTION_DISPATCH_AVAILABLE, str(dispatch_payload))
 check("correction dispatch : une interaction dispatchable", dispatch_payload["dispatchable_count"] == 1, str(dispatch_payload))
 check(
     "correction dispatch : next ledger interaction incrementee",
@@ -258,7 +269,7 @@ blocked_dispatch_payload = _correction_dispatch_payload(
 )
 check(
     "correction dispatch : budget epuise bloque dispatch",
-    blocked_dispatch_payload["status"] == "DISPATCH_BLOCKED_BUDGET_EXHAUSTED",
+    blocked_dispatch_payload["status"] == CORRECTION_DISPATCH_BLOCKED_BUDGET_EXHAUSTED,
     str(blocked_dispatch_payload),
 )
 check(
@@ -267,7 +278,7 @@ check(
     str(blocked_dispatch_payload),
 )
 clean_dispatch_payload = _correction_dispatch_payload(ContractTracker(), correction_attempt_budget=1)
-check("correction dispatch : rien a dispatcher", clean_dispatch_payload["status"] == "NO_DISPATCH_NEEDED", str(clean_dispatch_payload))
+check("correction dispatch : rien a dispatcher", clean_dispatch_payload["status"] == CORRECTION_DISPATCH_NO_DISPATCH_NEEDED, str(clean_dispatch_payload))
 with tempfile.TemporaryDirectory(dir=ROOT) as tmpdir:
     dispatch_path = _write_correction_dispatch_json(
         ROOT,
