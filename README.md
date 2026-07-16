@@ -34,7 +34,7 @@ contraintes de securite.
 |---|---|---|
 | **Phase 0** | Hardening fondations (shell, permissions, install determ.) | ✅ CLOTUREE |
 | **Phase 1** | Refactor protocole + contrats de sortie | ✅ SOCLE STABILISE (§0 tool use NIM, §1 contrats, §2 modes CLI, §3 resilience NIM) |
-| **Phase 2** | Cooperation multi-agent reelle | 🔄 EN COURS (§A-§I ✅ gouvernance corrective, interactions JSON) |
+| **Phase 2** | Cooperation multi-agent reelle | 🔄 EN COURS (§A-§J ✅ gouvernance corrective, JSON versionne) |
 | Phase 3 | Intelligence depot lourd | ⏳ a venir |
 | Phase 4 | Qualite produit | ⏳ a venir |
 | Phase 5 | Vers autonomie plus elevee | ⏳ a venir |
@@ -165,8 +165,9 @@ suivant prend le relais automatiquement.
   en cas de blocage. `--governance-json` ecrit un rapport machine-readable
   sous le projet. Les violations incluent une severite et une action corrective
   future (`action_hint`). Si un run est bloque, le CLI imprime aussi un plan
-  correctif borne; le JSON expose `correction_plan`, `corrective_actions`,
-  `corrective_interactions`, `interaction_type`, `interaction_id` et le budget
+  correctif borne; le JSON expose `schema_version`, `correction_plan`,
+  `corrective_actions`, `corrective_interactions`, `interaction_type`,
+  `interaction_id` et le budget
   par task configurable via
   `--correction-attempt-budget`.
   Pas de retry auto pour l'instant.
@@ -319,7 +320,7 @@ AGENTIQUE/
 │   ├── test_phase0.py       # Validation statique Phase 0 (22/22)
 │   ├── test_resilience.py   # Tests unitaires resilience NIM §3/§3bis (31/31)
 │   ├── test_modes.py        # Tests unitaires modes d'usage Phase 1 §2 + garde JSON (33/33)
-│   ├── test_contracts.py    # Tests contrats + rapports gouvernance Phase 2 §A-§I (64/64)
+│   ├── test_contracts.py    # Tests contrats + rapports gouvernance Phase 2 §A-§J (66/66)
 │   ├── test_tool_use.py     # Matrice tool use par modele NIM
 │   ├── tool_use_matrix.md   # Resultats de la matrice
 │   └── test_crewai_schema.py # Preuve du fix schemas CrewAI -> NIM (§0.c)
@@ -342,8 +343,8 @@ AGENTIQUE/
   bloque (`BLOCKED_CONTRACT_VIOLATIONS`) et peuvent retourner exit code 2 avec
   `--strict-contracts`. Un rapport JSON peut etre ecrit avec
   `--governance-json`; elles incluent `severity`, `action_hint`,
-  `correction_plan`, `corrective_interactions`, `interaction_type`,
-  `interaction_id` et `corrective_actions`, mais ne
+  `schema_version`, `correction_plan`, `corrective_interactions`,
+  `interaction_type`, `interaction_id` et `corrective_actions`, mais ne
   declenchent pas encore de retry automatique.
 - `planning=True` et `memory=True` CrewAI restent desactives sur NIM
   (incompat documentee).

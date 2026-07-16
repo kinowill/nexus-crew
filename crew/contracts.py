@@ -21,6 +21,7 @@ from pathlib import Path
 # Governance status
 # ---------------------------------------------------------------------------
 
+GOVERNANCE_PAYLOAD_SCHEMA_VERSION = 1
 GOVERNANCE_OK = "OK"
 GOVERNANCE_BLOCKED_CONTRACT_VIOLATIONS = "BLOCKED_CONTRACT_VIOLATIONS"
 CONTRACT_BLOCK_EXIT_CODE = 2
@@ -506,6 +507,7 @@ class ContractTracker:
         """Return a stable JSON-ready governance payload."""
         report = self.governance_report()
         return {
+            "schema_version": GOVERNANCE_PAYLOAD_SCHEMA_VERSION,
             "status": report.status,
             "should_block": report.should_block,
             "violations_count": report.violations_count,

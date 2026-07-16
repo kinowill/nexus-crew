@@ -24,6 +24,7 @@ sys.modules["contracts"] = contracts
 spec.loader.exec_module(contracts)
 
 ContractTracker = contracts.ContractTracker
+GOVERNANCE_PAYLOAD_SCHEMA_VERSION = contracts.GOVERNANCE_PAYLOAD_SCHEMA_VERSION
 GOVERNANCE_OK = contracts.GOVERNANCE_OK
 GOVERNANCE_BLOCKED_CONTRACT_VIOLATIONS = contracts.GOVERNANCE_BLOCKED_CONTRACT_VIOLATIONS
 CONTRACT_BLOCK_EXIT_CODE = contracts.CONTRACT_BLOCK_EXIT_CODE
@@ -104,6 +105,7 @@ check(
 )
 check("exit code : strict sans violation reste a 0", tracker.exit_code(True) == 0)
 payload = bad_tracker.governance_payload(strict_contracts=True)
+check("payload : schema version stable", payload["schema_version"] == GOVERNANCE_PAYLOAD_SCHEMA_VERSION)
 check("payload : status stable", payload["status"] == GOVERNANCE_BLOCKED_CONTRACT_VIOLATIONS)
 check("payload : violations serialisees", len(payload["violations"]) == 2)
 check("payload : premiere violation detaillee", payload["violations"][0]["rule"] == "required_tools")
@@ -158,6 +160,7 @@ except ValueError:
 
 json_payload = json.loads(bad_tracker.governance_json(strict_contracts=True))
 check("json : payload parsable", json_payload["exit_code"] == CONTRACT_BLOCK_EXIT_CODE)
+check("json : schema version present", json_payload["schema_version"] == GOVERNANCE_PAYLOAD_SCHEMA_VERSION)
 check("json : corrective actions presentes", len(json_payload["corrective_actions"]) == 1)
 check("json : corrective interactions presentes", len(json_payload["corrective_interactions"]) == 1)
 check("json : interaction envelope pending", json_payload["corrective_interactions"][0]["status"] == INTERACTION_STATUS_PENDING)

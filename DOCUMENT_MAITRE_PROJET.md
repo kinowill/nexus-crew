@@ -768,6 +768,7 @@ Autrement dit :
 - **§G — Identifiants stables d'interactions correctives** : ✅ FAIT (2026-07-16). Chaque action corrective expose maintenant `interaction_id` sous la forme `task:agent:interaction_type`. Ce champ rend les futures relances ou validations traçables entre CLI, JSON et journal sans activer de retry automatique.
 - **§H — Résumé machine-readable du plan correctif** : ✅ FAIT (2026-07-16). Le rapport JSON expose maintenant `correction_plan` avec `status`, compte d'actions, nombre relançable, nombre épuisé et budget. Ce résumé évite aux intégrations de recalculer l'état depuis `corrective_actions`, sans déclencher de retry automatique.
 - **§I — Enveloppes d'interactions correctives JSON** : ✅ FAIT (2026-07-16). Les actions correctives peuvent maintenant être exposées sous `corrective_interactions`, avec `interaction_id`, `interaction_type`, `status`, source, agent cible, task, raison et état de dispatch. C'est une préparation traçable des futures interactions inter-agents, sans exécution automatique.
+- **§J — Version de schéma du rapport de gouvernance** : ✅ FAIT (2026-07-16). Le payload de gouvernance expose maintenant `schema_version` afin que les outils et futures boucles d'orchestration puissent reconnaître explicitement le format JSON consommé.
 - autoriser les interactions inter-agents utiles ;
 - les typer proprement ;
 - borner les boucles ;
@@ -842,7 +843,7 @@ Pour le développeur :
 - `scripts/test_phase0.py` — validation statique Phase 0 (22/22)
 - `scripts/test_resilience.py` — tests unitaires résilience NIM §3 + §3bis (31/31)
 - `scripts/test_modes.py` — tests unitaires modes d'usage Phase 1 §2 + garde chemin JSON (33/33)
-- `scripts/test_contracts.py` — tests contrats + rapports de gouvernance Phase 2 §A/§B/§C/§D/§E/§F/§G/§H/§I (64/64)
+- `scripts/test_contracts.py` — tests contrats + rapports de gouvernance Phase 2 §A/§B/§C/§D/§E/§F/§G/§H/§I/§J (66/66)
 - `test_phase0.bat` — lanceur Windows pour `test_phase0.py`
 
 **Scripts de diagnostic NIM (avec réseau, coûteux en tokens)**
@@ -865,6 +866,16 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 > (distinction repo modifié / prod alignée / validation réelle).
 > Les entrées les plus récentes sont en haut.
 
+### 2026-07-16 — Phase 2 §J / Version de schéma du rapport de gouvernance
+
+- **Scope** : `crew/contracts.py`, `scripts/test_contracts.py`, `README.md`, `DOCUMENT_MAITRE_PROJET.md`.
+- **Motivation** : après l'ajout de champs JSON correctifs, les consommateurs du rapport avaient besoin d'un repère stable pour savoir quel format ils lisent. Un champ de version évite de deviner le schéma depuis la présence ou l'absence de clés.
+- **Changement applique** : ajout de `GOVERNANCE_PAYLOAD_SCHEMA_VERSION = 1` et du champ `schema_version` dans `governance_payload()` / `governance_json()`. Tests ajoutés sur payload dict et JSON.
+- **Validation offline** : `test_contracts.py` 66/66 OK, `test_modes.py` 33/33 OK, `test_resilience.py` 31/31 OK, `test_phase0.py` 22/22 OK, `ruff check crew scripts` OK, `py_compile` OK, `git diff --check` OK.
+- **Repo modifié** : oui.
+- **Prod alignée** : N/A (outil local).
+- **Validation runtime NIM** : non nécessaire pour cette slice (contrats/JSON/tests offline uniquement).
+- **Commit** : *(ce commit).*
 ### 2026-07-16 — Phase 2 §I / Enveloppes d'interactions correctives JSON
 
 - **Scope** : `crew/contracts.py`, `scripts/test_contracts.py`, `README.md`, `DOCUMENT_MAITRE_PROJET.md`.
