@@ -553,6 +553,21 @@ check(
     "debug : meme agents que edit",
     set(agent_roles(crew_debug)) == {"Researcher", "Architect", "Coder", "Critic"},
 )
+debug_descriptions = "\n".join(str(getattr(task, "description", "")) for task in crew_debug.tasks)
+check(
+    "debug : consignes diagnostic presentes",
+    "Mode DEBUG" in debug_descriptions
+    and "cause racine" in debug_descriptions
+    and "patch minimal" in debug_descriptions,
+)
+tracker = ContractTracker()
+crew_edit_guidance = build_crew("debug X", ROOT, deep=False,
+                                tracker=tracker, mode="edit")
+edit_descriptions = "\n".join(str(getattr(task, "description", "")) for task in crew_edit_guidance.tasks)
+check(
+    "edit : pas de consignes debug",
+    "Mode DEBUG" not in edit_descriptions,
+)
 
 
 # ─── Mode invalide ───────────────────────────────────────────────────────────

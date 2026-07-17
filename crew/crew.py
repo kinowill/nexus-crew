@@ -749,12 +749,12 @@ def make_scanner() -> Agent:
 # d'appel LLM dedie, pas de changement du defaut historique edit.
 #
 #  - auto   : heuristique locale vers read / review / debug / edit.
-#  - read   : comprehension / audit sans modification (Researcher + final).
+#  - read   : comprehension / audit sans modification (Researcher seul).
 #  - edit   : modification propre avec validation (pipeline complet, defaut).
 #  - review : relecture d'un etat existant, pas d'apres-Coder (Researcher +
 #             review standalone + final).
-#  - debug  : investigation + correction (alias de edit pour l'instant,
-#             differenciation produit prevue Phase 2).
+#  - debug  : investigation + correction avec consignes diagnostic,
+#             meme composition que edit.
 
 
 def _resolve_governance_json_path(project_path: Path, target: str) -> Path:
@@ -1129,6 +1129,43 @@ def _resolve_mode(task_text: str, mode: str) -> str:
     return mode
 
 
+def _debug_mode_guidance(mode: str, section: str) -> str:
+    """Return task-specific diagnostic guidance for debug mode."""
+    if mode != "debug":
+        return ""
+    guidance = {
+        "research": (
+            "\n\nMode DEBUG : oriente la carte vers la reproduction du probleme, "
+            "les symptomes observables, les zones de cause racine probable et "
+            "les validations utiles."
+        ),
+        "plan": (
+            "\n\nMode DEBUG : structure le plan autour de l'hypothese de cause racine, "
+            "de la reproduction, du patch minimal et des validations ciblees."
+        ),
+        "code": (
+            "\n\nMode DEBUG : applique uniquement les changements necessaires a la "
+            "cause racine identifiee. Evite les refactors opportunistes et "
+            "garde chaque modification justifiable par le diagnostic."
+        ),
+        "review": (
+            "\n\nMode DEBUG : verifie la chaine symptome -> cause racine -> patch -> "
+            "validation. Cherche les regressions liees au correctif plutot que "
+            "des ameliorations hors scope."
+        ),
+        "rework": (
+            "\n\nMode DEBUG : corrige seulement ce qui invalide le diagnostic, le patch "
+            "minimal ou la validation ciblee demandes par le Critic."
+        ),
+        "final": (
+            "\n\nMode DEBUG : organise la synthese autour de la cause racine probable, "
+            "du correctif applique, des validations effectuees et des risques "
+            "restants."
+        ),
+    }
+    return guidance[section]
+
+
 def build_crew(task_text: str, project_path: Path, deep: bool,
                tracker: ContractTracker | None = None,
                mode: str = DEFAULT_MODE) -> Crew:
@@ -1147,6 +1184,7 @@ def build_crew(task_text: str, project_path: Path, deep: bool,
             "3. Fichiers particulièrement pertinents pour la tâche\n"
             "4. Risques, contraintes ou conventions à respecter\n"
             "Utilise list_files, read_file, grep. Sois précis sur les chemins."
+            + _debug_mode_guidance(mode, "research")
         ),
         expected_output="Un rapport markdown avec la carte du projet et les éléments pertinents pour la tâche",
         agent=researcher,
@@ -1200,8 +1238,8 @@ def build_crew(task_text: str, project_path: Path, deep: bool,
         agents = [researcher, critic, architect]
 
     else:
-        # mode == "edit" ou mode == "debug" : meme pipeline (differenciation
-        # produit reportee Phase 2).
+        # mode == "edit" ou mode == "debug" : meme pipeline; debug
+        # ajoute des consignes diagnostic sans changer la composition.
         architect = make_architect()
         coder      = make_coder()
         critic     = make_critic()
@@ -1214,6 +1252,7 @@ def build_crew(task_text: str, project_path: Path, deep: bool,
                 "- Indique les fichiers exacts à toucher\n"
                 "- Précise l'ordre et les dépendances\n"
                 "- Liste les points à vérifier par le Critic"
+                + _debug_mode_guidance(mode, "plan")
             ),
             expected_output="Un plan numéroté et actionnable pour le Coder",
             agent=architect,
@@ -1228,6 +1267,7 @@ def build_crew(task_text: str, project_path: Path, deep: bool,
                 "- Utilise write_file pour persister chaque changement\n"
                 "- Ne fais AUCUN changement hors du plan\n"
                 "- Retourne un résumé précis des fichiers touchés et ce qui a changé"
+                + _debug_mode_guidance(mode, "code")
             ),
             expected_output="Un résumé structuré des changements, avec la liste des fichiers modifiés",
             agent=coder,
@@ -1243,6 +1283,7 @@ def build_crew(task_text: str, project_path: Path, deep: bool,
                 "- Tu es en LECTURE SEULE : pas d'écriture, pas de shell, pas de tests. "
                 "Si tu penses qu'un test devrait être lancé, mentionne-le dans ton feedback.\n"
                 "Finis par APPROVED si tout est bon, ou CHANGES_NEEDED avec les corrections à apporter"
+                + _debug_mode_guidance(mode, "review")
             ),
             expected_output="APPROVED ou CHANGES_NEEDED avec feedback détaillé",
             agent=critic,
@@ -1257,6 +1298,7 @@ def build_crew(task_text: str, project_path: Path, deep: bool,
                 "  en utilisant read_file + write_file. Ne touche QUE ce que le Critic demande. "
                 "  Liste les fichiers retouchés.\n"
                 "Tu peux interroger le Critic si une correction est ambiguë."
+                + _debug_mode_guidance(mode, "rework")
             ),
             expected_output="Soit 'APPROVED — aucun changement', soit la liste des corrections appliquées",
             agent=coder,
@@ -1273,6 +1315,7 @@ def build_crew(task_text: str, project_path: Path, deep: bool,
                 "- État final (succès / corrections demandées / bloqué)\n"
                 "- Fichiers touchés avec leurs chemins\n"
                 "- Points d'attention restants pour l'utilisateur"
+                + _debug_mode_guidance(mode, "final")
             ),
             expected_output="Un rapport final markdown lisible par un humain non-développeur",
             agent=architect,
@@ -1359,7 +1402,7 @@ def main():
             "  read    Compréhension / audit sans modification (Researcher seul)\n"
             "  edit    Modification propre avec validation (pipeline complet, défaut)\n"
             "  review  Relecture d'un état existant (Researcher + Critic + synthèse)\n"
-            "  debug   Investigation + correction (alias edit pour l'instant)\n\n"
+            "  debug   Investigation + correction avec consignes diagnostic\n\n"
             "Exemples :\n"
             '  python crew.py "explique ce projet" --project C:/mon-projet --mode auto\n'
             '  python crew.py "explique ce projet" --project C:/mon-projet --mode read\n'

@@ -752,7 +752,7 @@ Autrement dit :
 - introduire une couche de gouvernance ;
 - **§2 — Séparer les modes `read`, `edit`, `review`, `debug`** : ✅ SLICE A FAITE (2026-04-20).
   - CLI `--mode {read,edit,review,debug}` dans `crew.py`, défaut `edit` (non-régression).
-  - `build_crew` route les tasks par mode : `read` = 1 task (Researcher direct), `review` = 3 tasks (Researcher + review standalone + synthèse), `edit`/`debug` = pipeline complet 6 tasks (inchangé). `debug` est alias de `edit` côté composition, différenciation produit reportée Phase 2.
+  - `build_crew` route les tasks par mode : `read` = 1 task (Researcher direct), `review` = 3 tasks (Researcher + review standalone + synthèse), `edit`/`debug` = pipeline complet 6 tasks (inchangé). `debug` garde la même composition que `edit`, mais dispose désormais de consignes prompt-level dédiées au diagnostic en Phase 2 §X.
   - Garde-fou : `--write` silencieusement ignoré en mode `read` et `review`.
   - Validation : 31/31 `test_modes.py` + 22/22 `test_phase0.py` + 31/31 `test_resilience.py`.
   - **Slice B — Classifier automatique local de mode** : ✅ FAIT en Phase 2 §W (2026-07-17). `--mode auto` classe localement `task_text` vers `read`, `review`, `debug` ou `edit` sans appel LLM dédié. Le défaut reste `edit` pour non-régression.
@@ -782,6 +782,7 @@ Autrement dit :
 - **§U — Résumé CLI du manifeste dispatch JSON** : ✅ FAIT (2026-07-17). `--correction-dispatch-json` imprime maintenant le même résumé compact que le mode strict après écriture du manifeste. Le payload est calculé une seule fois puis réutilisé pour l'écriture et l'affichage, sans consommer de ledger et sans relance automatique.
 - **§V — IDs d'interactions dans le résumé dispatch** : ✅ FAIT (2026-07-17). Le résumé CLI du dispatch affiche maintenant les `interaction_id` dispatchables et bloqués, bornés à 5 IDs par ligne avec compteur résiduel. Cela rend la reprise plus directe sans ouvrir le JSON et sans changer le payload.
 - **§W — Mode auto local sans appel LLM dédié** : ✅ FAIT (2026-07-17). `--mode auto` résout la demande vers `read`, `review`, `debug` ou `edit` via heuristique locale déterministe. Le défaut CLI reste `edit`, et les modes explicites gardent priorité sur la classification.
+- **§X — Différenciation prompt-level du mode debug** : ✅ FAIT (2026-07-17). `debug` conserve la même composition que `edit`, mais ajoute des consignes par task sur reproduction, cause racine, patch minimal, review ciblée et synthèse de validation. Aucun agent, outil ou retry automatique supplémentaire n'est ajouté.
 - autoriser les interactions inter-agents utiles ;
 - les typer proprement ;
 - borner les boucles ;
@@ -855,7 +856,7 @@ Pour le développeur :
 **Scripts de validation / diagnostic (offline, sans réseau)**
 - `scripts/test_phase0.py` — validation statique Phase 0 (22/22)
 - `scripts/test_resilience.py` — tests unitaires résilience NIM §3 + §3bis (31/31)
-- `scripts/test_modes.py` — tests unitaires modes d'usage Phase 1 §2 + gardes chemin JSON/ledger/dispatch, snapshot correctif, next ledger, statuts dispatch, résumés CLI avec IDs, mode auto, exit strict et schémas (85/85)
+- `scripts/test_modes.py` — tests unitaires modes d'usage Phase 1 §2 + gardes chemin JSON/ledger/dispatch, snapshot correctif, next ledger, statuts dispatch, résumés CLI avec IDs, mode auto/debug, exit strict et schémas (87/87)
 - `scripts/test_contracts.py` — tests contrats + rapports de gouvernance Phase 2 §A/§B/§C/§D/§E/§F/§G/§H/§I/§J/§K/§L (76/76)
 - `test_phase0.bat` — lanceur Windows pour `test_phase0.py`
 
@@ -879,6 +880,17 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 > (distinction repo modifié / prod alignée / validation réelle).
 > Les entrées les plus récentes sont en haut.
 
+### 2026-07-17 — Phase 2 §X / Différenciation prompt-level du mode debug
+
+- **Scope** : `crew/crew.py`, `scripts/test_modes.py`, `README.md`, `DOCUMENT_MAITRE_PROJET.md`.
+- **Motivation** : après `--mode auto`, le mode `debug` pouvait être choisi automatiquement mais restait encore identique à `edit` dans les consignes données aux tasks.
+- **Changement appliqué** : ajout de consignes `Mode DEBUG` par task (`research`, `plan`, `code`, `review`, `rework`, `final`) pour orienter le pipeline vers reproduction, cause racine, patch minimal, review ciblée et synthèse des validations. La composition reste volontairement identique à `edit` : 6 tasks, mêmes agents, aucun retry automatique.
+- **Tests ajoutés** : `scripts/test_modes.py` vérifie que `debug` garde le pipeline/les agents de `edit`, contient les consignes diagnostic, et que `edit` ne les reçoit pas.
+- **Validation offline** : `test_contracts.py` 76/76 OK, `test_modes.py` 87/87 OK, `test_resilience.py` 31/31 OK, `test_phase0.py` 22/22 OK, `crew.py --help` OK, `ruff check crew scripts` OK, `py_compile` OK, `git diff --check` OK.
+- **Repo modifié** : oui.
+- **Prod alignée** : N/A (outil local).
+- **Validation runtime NIM** : non effectuée; le changement est prompt-level et couvert structurellement offline, mais l'effet qualitatif devra être observé sur un vrai bug.
+- **Commit** : *(ce commit).*
 ### 2026-07-17 — Phase 2 §W / Mode auto local sans appel LLM dédié
 
 - **Scope** : `crew/crew.py`, `scripts/test_modes.py`, `README.md`, `DOCUMENT_MAITRE_PROJET.md`.

@@ -34,7 +34,7 @@ contraintes de securite.
 |---|---|---|
 | **Phase 0** | Hardening fondations (shell, permissions, install determ.) | ✅ CLOTUREE |
 | **Phase 1** | Refactor protocole + contrats de sortie | ✅ SOCLE STABILISE (§0 tool use NIM, §1 contrats, §2 modes CLI, §3 resilience NIM) |
-| **Phase 2** | Cooperation multi-agent reelle | 🔄 EN COURS (§A-§W ✅ gouvernance corrective, mode auto, dispatch dry-run tracable) |
+| **Phase 2** | Cooperation multi-agent reelle | 🔄 EN COURS (§A-§X ✅ gouvernance corrective, mode auto/debug, dispatch dry-run tracable) |
 | Phase 3 | Intelligence depot lourd | ⏳ a venir |
 | Phase 4 | Qualite produit | ⏳ a venir |
 | Phase 5 | Vers autonomie plus elevee | ⏳ a venir |
@@ -64,7 +64,7 @@ mechanique locale. Il ne faut pas le confondre avec la cible produit finale.
 
 Le pipeline s'adapte au mode d'usage choisi via `--mode` (defaut : `edit`). `--mode auto` classe localement la demande vers `read`, `review`, `debug` ou `edit` sans appel LLM dedie :
 
-**Mode `edit` / `debug`** (pipeline complet, pour modifier du code) :
+**Mode `edit` / `debug`** (pipeline complet ; `debug` ajoute des consignes diagnostic/cause racine) :
 
 ```text
     [Researcher]        <- carte mentale du projet
@@ -178,7 +178,7 @@ suivant prend le relais automatiquement.
   Pas de retry auto pour l'instant.
 - **Modes d'usage CLI** (Phase 1 §2 + Phase 2 §W) : `--mode auto/read/edit/review/debug`
   adapte la composition du crew a la demande, evitant la sur-utilisation
-  systematique du pipeline complet. Classifier automatique local disponible via `--mode auto` (Phase 2 §W).
+  systematique du pipeline complet. Classifier automatique local disponible via `--mode auto` (Phase 2 §W), avec consignes diagnostic dédiées en `debug` (Phase 2 §X).
 - `planning=True` et `memory=True` desactives pour rester compatibles avec
   certaines limites NVIDIA NIM.
 
@@ -328,7 +328,7 @@ AGENTIQUE/
 │   ├── discover_models.py   # Inventaire modele NIM
 │   ├── test_phase0.py       # Validation statique Phase 0 (22/22)
 │   ├── test_resilience.py   # Tests unitaires resilience NIM §3/§3bis (31/31)
-│   ├── test_modes.py        # Tests unitaires modes d'usage Phase 1 §2 + gardes JSON/ledger/dispatch + mode auto (85/85)
+│   ├── test_modes.py        # Tests unitaires modes d'usage Phase 1 §2 + gardes JSON/ledger/dispatch + mode auto/debug (87/87)
 │   ├── test_contracts.py    # Tests contrats + rapports gouvernance Phase 2 §A-§L (76/76)
 │   ├── test_tool_use.py     # Matrice tool use par modele NIM
 │   ├── tool_use_matrix.md   # Resultats de la matrice
@@ -361,9 +361,10 @@ AGENTIQUE/
   Researcher mesures en debug). Resume / troncature prevue Phase 2.
 - Les rate-limits NVIDIA NIM free tier (~40 req/min) restent un risque
   malgre le backoff automatique sur gros runs prolonges.
-- Mode `debug` reste aujourd'hui un alias de `edit` cote composition. La
-  differentiation produit (orientation diagnostic) reste a affiner apres le
-  classifieur local `--mode auto`.
+- Mode `debug` garde la meme composition que `edit`, mais dispose maintenant
+  de consignes prompt-level orientees diagnostic, cause racine, patch minimal
+  et validations ciblees. La validation runtime NIM de ce comportement reste
+  a observer sur un vrai bug.
 
 ---
 
