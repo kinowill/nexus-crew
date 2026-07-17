@@ -864,10 +864,13 @@ def _correction_attempt_ledger_payload(
         for interaction in interactions
         if interaction.get("should_dispatch")
     )
+    blocked = [
+        interaction for interaction in interactions
+        if not interaction.get("should_dispatch")
+    ]
     blocked_ids = sorted(
         interaction["interaction_id"]
-        for interaction in interactions
-        if not interaction.get("should_dispatch")
+        for interaction in blocked
     )
     return {
         "schema_version": CORRECTION_LEDGER_SCHEMA_VERSION,
@@ -930,10 +933,13 @@ def _correction_dispatch_payload(
         interaction["interaction_id"]
         for interaction in dispatchable
     )
+    blocked = [
+        interaction for interaction in interactions
+        if not interaction.get("should_dispatch")
+    ]
     blocked_ids = sorted(
         interaction["interaction_id"]
-        for interaction in interactions
-        if not interaction.get("should_dispatch")
+        for interaction in blocked
     )
     next_attempts_by_interaction_id = dict(attempts_used_by_interaction_id)
     for interaction in dispatchable:
@@ -956,6 +962,7 @@ def _correction_dispatch_payload(
         "dispatchable_interaction_ids": dispatchable_ids,
         "blocked_interaction_ids": blocked_ids,
         "dispatchable_interactions": dispatchable,
+        "blocked_interactions": blocked,
         "correction_plan": tracker.correction_plan_payload(
             attempts_budget=correction_attempt_budget,
             attempts_used_by_task=attempts_used_by_task,
@@ -1041,6 +1048,12 @@ def _correction_dispatch_summary(payload: dict, strict_correction_dispatch: bool
             if "interaction_id" in interaction
         ]
     blocked_ids = list(payload.get("blocked_interaction_ids", []))
+    if not blocked_ids:
+        blocked_ids = [
+            interaction["interaction_id"]
+            for interaction in payload.get("blocked_interactions", [])
+            if "interaction_id" in interaction
+        ]
     lines = [
         "[CORRECTION] dispatch dry-run : "
         f"{status} ({dispatchable_count} dispatchable, {blocked_count} bloquee(s))"

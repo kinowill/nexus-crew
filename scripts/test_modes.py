@@ -362,11 +362,28 @@ check(
     blocked_dispatch_payload["blocked_interaction_ids"] == [ledger_interaction_id],
     str(blocked_dispatch_payload),
 )
+check(
+    "correction dispatch : enveloppe bloquee exposee",
+    blocked_dispatch_payload["blocked_interactions"][0]["interaction_id"] == ledger_interaction_id
+    and blocked_dispatch_payload["blocked_interactions"][0]["should_dispatch"] is False,
+    str(blocked_dispatch_payload),
+)
 blocked_dispatch_summary = _correction_dispatch_summary(blocked_dispatch_payload)
 check(
     "correction dispatch summary : id bloque visible",
     ledger_interaction_id in blocked_dispatch_summary,
     blocked_dispatch_summary,
+)
+fallback_blocked_dispatch_summary = _correction_dispatch_summary({
+    "status": CORRECTION_DISPATCH_BLOCKED_BUDGET_EXHAUSTED,
+    "dispatchable_count": 0,
+    "blocked_count": 1,
+    "blocked_interactions": [{"interaction_id": ledger_interaction_id}],
+})
+check(
+    "correction dispatch summary : fallback enveloppes bloquees",
+    ledger_interaction_id in fallback_blocked_dispatch_summary,
+    fallback_blocked_dispatch_summary,
 )
 check(
     "correction dispatch exit : budget epuise reste 0",
@@ -408,6 +425,20 @@ check(
     "correction dispatch : fichier expose ids dispatchables",
     written_dispatch_payload["dispatchable_interaction_ids"] == [ledger_interaction_id],
     str(written_dispatch_payload),
+)
+with tempfile.TemporaryDirectory(dir=ROOT) as tmpdir:
+    blocked_dispatch_path = _write_correction_dispatch_json(
+        ROOT,
+        str(Path(tmpdir) / "dispatch-blocked.json"),
+        ledger_tracker,
+        correction_attempt_budget=1,
+        attempts_used_by_interaction_id={ledger_interaction_id: 1},
+    )
+    written_blocked_dispatch_payload = json.loads(blocked_dispatch_path.read_text(encoding="utf-8"))
+check(
+    "correction dispatch : fichier expose enveloppes bloquees",
+    written_blocked_dispatch_payload["blocked_interactions"][0]["interaction_id"] == ledger_interaction_id,
+    str(written_blocked_dispatch_payload),
 )
 with tempfile.TemporaryDirectory(dir=ROOT) as tmpdir:
     supplied_dispatch_path = _write_correction_dispatch_json(
