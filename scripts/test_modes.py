@@ -297,6 +297,15 @@ check(
         correction_attempt_budget=2,
     ) == CORRECTION_DISPATCH_AVAILABLE_EXIT_CODE,
 )
+check(
+    "correction dispatch exit : payload fourni utilise sans recalcul",
+    _correction_dispatch_exit_code(
+        ContractTracker(),
+        strict_correction_dispatch=True,
+        correction_attempt_budget=0,
+        payload=dispatch_payload,
+    ) == CORRECTION_DISPATCH_AVAILABLE_EXIT_CODE,
+)
 available_dispatch_summary = _correction_dispatch_summary(
     dispatch_payload,
     strict_correction_dispatch=True,

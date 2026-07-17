@@ -786,6 +786,7 @@ Autrement dit :
 - **§Y — IDs dispatchables au premier niveau du manifeste** : ✅ FAIT (2026-07-17). Le manifeste dry-run expose maintenant `dispatchable_interaction_ids` en plus des enveloppes complètes, aligné avec `blocked_interaction_ids`. Les automatisations peuvent consommer directement les IDs sans reparcourir `dispatchable_interactions`.
 - **§Z — Résumé dispatch basé sur les IDs top-level** : ✅ FAIT (2026-07-17). Le résumé CLI du dispatch lit maintenant `dispatchable_interaction_ids` quand il est présent, avec fallback compatible sur `dispatchable_interactions`. Aucun changement de schéma, de dispatch réel ou de retry automatique.
 - **§AA — Résumé CLI pour l'écriture directe du next ledger** : ✅ FAIT (2026-07-17). `--correction-next-ledger-json` réutilise maintenant le payload dispatch calculé, écrit le `next_ledger` projeté sans recalcul et affiche le résumé compact du dispatch si aucun résumé n'a déjà été imprimé. Aucun dispatch réel, aucun ledger consommé, aucun retry automatique.
+- **§AB — Exit strict sans recalcul du dispatch** : ✅ FAIT (2026-07-17). `_correction_dispatch_exit_code()` accepte maintenant un payload dispatch déjà calculé et le CLI le réutilise pour décider l'exit code strict. Cela évite un recalcul après écriture du manifeste ou du next ledger, sans changer les statuts ni déclencher de retry automatique.
 - autoriser les interactions inter-agents utiles ;
 - les typer proprement ;
 - borner les boucles ;
@@ -859,7 +860,7 @@ Pour le développeur :
 **Scripts de validation / diagnostic (offline, sans réseau)**
 - `scripts/test_phase0.py` — validation statique Phase 0 (22/22)
 - `scripts/test_resilience.py` — tests unitaires résilience NIM §3 + §3bis (31/31)
-- `scripts/test_modes.py` — tests unitaires modes d'usage Phase 1 §2 + gardes chemin JSON/ledger/dispatch, snapshot correctif, next ledger, statuts dispatch, résumés CLI avec IDs, mode auto/debug, exit strict et schémas (93/93)
+- `scripts/test_modes.py` — tests unitaires modes d'usage Phase 1 §2 + gardes chemin JSON/ledger/dispatch, snapshot correctif, next ledger, statuts dispatch, résumés CLI avec IDs, mode auto/debug, exit strict et schémas (94/94)
 - `scripts/test_contracts.py` — tests contrats + rapports de gouvernance Phase 2 §A/§B/§C/§D/§E/§F/§G/§H/§I/§J/§K/§L (76/76)
 - `test_phase0.bat` — lanceur Windows pour `test_phase0.py`
 
@@ -882,6 +883,18 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 > Trace des modifications apportées au projet, conformément au protocole
 > (distinction repo modifié / prod alignée / validation réelle).
 > Les entrées les plus récentes sont en haut.
+
+### 2026-07-17 — Phase 2 §AB / Exit strict sans recalcul du dispatch
+
+- **Scope** : `crew/crew.py`, `scripts/test_modes.py`, `README.md`, `DOCUMENT_MAITRE_PROJET.md`.
+- **Motivation** : après l'écriture d'un manifeste dispatch ou d'un `next_ledger`, le CLI pouvait déjà disposer du payload dispatch complet mais recalculait encore ce payload pour décider l'exit code strict.
+- **Changement appliqué** : `_correction_dispatch_exit_code()` accepte un payload fourni et `main()` lui transmet le payload déjà calculé quand il existe. Les statuts, le résumé CLI, le JSON et les exit codes restent inchangés; aucun dispatch réel et aucun retry automatique ne sont activés.
+- **Tests ajoutés** : `scripts/test_modes.py` vérifie qu'un payload fourni est utilisé pour retourner l'exit code strict, même avec un tracker vide qui ne pourrait pas recalculer le même dispatch.
+- **Validation offline** : `test_contracts.py` 76/76 OK, `test_modes.py` 94/94 OK, `test_resilience.py` 31/31 OK, `test_phase0.py` 22/22 OK, `crew.py --help` OK, `ruff check crew scripts` OK, `py_compile` OK, `git diff --check` OK.
+- **Repo modifié** : oui.
+- **Prod alignée** : N/A (outil local).
+- **Validation runtime NIM** : non nécessaire pour cette slice CLI/dispatch/tests offline uniquement.
+- **Commit** : *(ce commit).*
 
 ### 2026-07-17 — Phase 2 §AA / Résumé CLI pour l'écriture directe du next ledger
 

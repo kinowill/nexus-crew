@@ -1063,16 +1063,18 @@ def _correction_dispatch_exit_code(
     correction_attempt_budget: int = 1,
     attempts_used_by_task: dict[str, int] | None = None,
     attempts_used_by_interaction_id: dict[str, int] | None = None,
+    payload: dict | None = None,
 ) -> int:
     """Return the optional CLI exit code for available corrective dispatches."""
     if not strict_correction_dispatch:
         return 0
-    payload = _correction_dispatch_payload(
-        tracker=tracker,
-        correction_attempt_budget=correction_attempt_budget,
-        attempts_used_by_task=attempts_used_by_task,
-        attempts_used_by_interaction_id=attempts_used_by_interaction_id,
-    )
+    if payload is None:
+        payload = _correction_dispatch_payload(
+            tracker=tracker,
+            correction_attempt_budget=correction_attempt_budget,
+            attempts_used_by_task=attempts_used_by_task,
+            attempts_used_by_interaction_id=attempts_used_by_interaction_id,
+        )
     if payload["status"] == CORRECTION_DISPATCH_AVAILABLE:
         return CORRECTION_DISPATCH_AVAILABLE_EXIT_CODE
     return 0
@@ -1663,6 +1665,7 @@ def main():
         correction_attempt_budget=args.correction_attempt_budget,
         attempts_used_by_task=attempts_used_by_task,
         attempts_used_by_interaction_id=attempts_used_by_interaction_id,
+        payload=dispatch_payload_for_summary,
     )
     if dispatch_exit_code:
         sys.exit(dispatch_exit_code)
