@@ -784,6 +784,7 @@ Autrement dit :
 - **§W — Mode auto local sans appel LLM dédié** : ✅ FAIT (2026-07-17). `--mode auto` résout la demande vers `read`, `review`, `debug` ou `edit` via heuristique locale déterministe. Le défaut CLI reste `edit`, et les modes explicites gardent priorité sur la classification.
 - **§X — Différenciation prompt-level du mode debug** : ✅ FAIT (2026-07-17). `debug` conserve la même composition que `edit`, mais ajoute des consignes par task sur reproduction, cause racine, patch minimal, review ciblée et synthèse de validation. Aucun agent, outil ou retry automatique supplémentaire n'est ajouté.
 - **§Y — IDs dispatchables au premier niveau du manifeste** : ✅ FAIT (2026-07-17). Le manifeste dry-run expose maintenant `dispatchable_interaction_ids` en plus des enveloppes complètes, aligné avec `blocked_interaction_ids`. Les automatisations peuvent consommer directement les IDs sans reparcourir `dispatchable_interactions`.
+- **§Z — Résumé dispatch basé sur les IDs top-level** : ✅ FAIT (2026-07-17). Le résumé CLI du dispatch lit maintenant `dispatchable_interaction_ids` quand il est présent, avec fallback compatible sur `dispatchable_interactions`. Aucun changement de schéma, de dispatch réel ou de retry automatique.
 - autoriser les interactions inter-agents utiles ;
 - les typer proprement ;
 - borner les boucles ;
@@ -857,7 +858,7 @@ Pour le développeur :
 **Scripts de validation / diagnostic (offline, sans réseau)**
 - `scripts/test_phase0.py` — validation statique Phase 0 (22/22)
 - `scripts/test_resilience.py` — tests unitaires résilience NIM §3 + §3bis (31/31)
-- `scripts/test_modes.py` — tests unitaires modes d'usage Phase 1 §2 + gardes chemin JSON/ledger/dispatch, snapshot correctif, next ledger, statuts dispatch, résumés CLI avec IDs, mode auto/debug, exit strict et schémas (89/89)
+- `scripts/test_modes.py` — tests unitaires modes d'usage Phase 1 §2 + gardes chemin JSON/ledger/dispatch, snapshot correctif, next ledger, statuts dispatch, résumés CLI avec IDs, mode auto/debug, exit strict et schémas (91/91)
 - `scripts/test_contracts.py` — tests contrats + rapports de gouvernance Phase 2 §A/§B/§C/§D/§E/§F/§G/§H/§I/§J/§K/§L (76/76)
 - `test_phase0.bat` — lanceur Windows pour `test_phase0.py`
 
@@ -880,6 +881,18 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 > Trace des modifications apportées au projet, conformément au protocole
 > (distinction repo modifié / prod alignée / validation réelle).
 > Les entrées les plus récentes sont en haut.
+
+### 2026-07-17 — Phase 2 §Z / Résumé dispatch basé sur les IDs top-level
+
+- **Scope** : `crew/crew.py`, `scripts/test_modes.py`, `README.md`, `DOCUMENT_MAITRE_PROJET.md`.
+- **Motivation** : après §Y, le manifeste expose `dispatchable_interaction_ids` au premier niveau, mais le résumé CLI recalculait encore les IDs depuis les enveloppes complètes.
+- **Changement appliqué** : `_correction_dispatch_summary()` consomme désormais `dispatchable_interaction_ids` quand il existe, avec fallback compatible sur `dispatchable_interactions` pour les payloads anciens ou construits manuellement. Aucun changement de schéma, aucun dispatch réel, aucun retry automatique.
+- **Tests ajoutés** : `scripts/test_modes.py` couvre le résumé sur payload IDs-only et le fallback via enveloppes dispatchables.
+- **Validation offline** : `test_contracts.py` 76/76 OK, `test_modes.py` 91/91 OK, `test_resilience.py` 31/31 OK, `test_phase0.py` 22/22 OK, `crew.py --help` OK, `ruff check crew scripts` OK, `py_compile` OK, `git diff --check` OK.
+- **Repo modifié** : oui.
+- **Prod alignée** : N/A (outil local).
+- **Validation runtime NIM** : non nécessaire pour cette slice de résumé CLI/tests offline uniquement.
+- **Commit** : *(ce commit).*
 
 ### 2026-07-17 — Phase 2 §Y / IDs dispatchables au premier niveau du manifeste
 

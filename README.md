@@ -34,7 +34,7 @@ contraintes de securite.
 |---|---|---|
 | **Phase 0** | Hardening fondations (shell, permissions, install determ.) | ✅ CLOTUREE |
 | **Phase 1** | Refactor protocole + contrats de sortie | ✅ SOCLE STABILISE (§0 tool use NIM, §1 contrats, §2 modes CLI, §3 resilience NIM) |
-| **Phase 2** | Cooperation multi-agent reelle | 🔄 EN COURS (§A-§Y ✅ gouvernance corrective, mode auto/debug, dispatch dry-run tracable) |
+| **Phase 2** | Cooperation multi-agent reelle | 🔄 EN COURS (§A-§Z ✅ gouvernance corrective, mode auto/debug, dispatch dry-run tracable) |
 | Phase 3 | Intelligence depot lourd | ⏳ a venir |
 | Phase 4 | Qualite produit | ⏳ a venir |
 | Phase 5 | Vers autonomie plus elevee | ⏳ a venir |
@@ -174,7 +174,7 @@ suivant prend le relais automatiquement.
   `--correction-attempt-budget`. Le suivi interne des tentatives correctives
   peut aussi se faire par `interaction_id`, plus precis que `task_name`,
   et etre propage dans les rapports JSON via les helpers de gouvernance.
-  Le CLI peut charger ce ledger avec `--correction-ledger-json`, verifier `schema_version` quand il est present, ecrire un snapshot de reprise avec `--correction-ledger-out-json`, produire un manifeste dry-run de dispatch avec `--correction-dispatch-json` et son résumé CLI avec IDs, et ecrire directement le prochain ledger reutilisable avec `--correction-next-ledger-json`.
+  Le CLI peut charger ce ledger avec `--correction-ledger-json`, verifier `schema_version` quand il est present, ecrire un snapshot de reprise avec `--correction-ledger-out-json`, produire un manifeste dry-run de dispatch avec `--correction-dispatch-json`; son résumé CLI consomme directement les IDs top-level quand ils sont présents, et ecrire directement le prochain ledger reutilisable avec `--correction-next-ledger-json`.
   Pas de retry auto pour l'instant.
 - **Modes d'usage CLI** (Phase 1 §2 + Phase 2 §W) : `--mode auto/read/edit/review/debug`
   adapte la composition du crew a la demande, evitant la sur-utilisation
@@ -328,7 +328,7 @@ AGENTIQUE/
 │   ├── discover_models.py   # Inventaire modele NIM
 │   ├── test_phase0.py       # Validation statique Phase 0 (22/22)
 │   ├── test_resilience.py   # Tests unitaires resilience NIM §3/§3bis (31/31)
-│   ├── test_modes.py        # Tests unitaires modes d'usage Phase 1 §2 + gardes JSON/ledger/dispatch + mode auto/debug (89/89)
+│   ├── test_modes.py        # Tests unitaires modes d'usage Phase 1 §2 + gardes JSON/ledger/dispatch + mode auto/debug (91/91)
 │   ├── test_contracts.py    # Tests contrats + rapports gouvernance Phase 2 §A-§L (76/76)
 │   ├── test_tool_use.py     # Matrice tool use par modele NIM
 │   ├── tool_use_matrix.md   # Resultats de la matrice

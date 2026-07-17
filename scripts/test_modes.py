@@ -313,6 +313,28 @@ check(
     ledger_interaction_id in available_dispatch_summary,
     available_dispatch_summary,
 )
+ids_only_dispatch_summary = _correction_dispatch_summary({
+    "status": CORRECTION_DISPATCH_AVAILABLE,
+    "dispatchable_count": 1,
+    "blocked_count": 0,
+    "dispatchable_interaction_ids": [ledger_interaction_id],
+})
+check(
+    "correction dispatch summary : lit ids dispatchables top-level",
+    ledger_interaction_id in ids_only_dispatch_summary,
+    ids_only_dispatch_summary,
+)
+fallback_dispatch_summary = _correction_dispatch_summary({
+    "status": CORRECTION_DISPATCH_AVAILABLE,
+    "dispatchable_count": 1,
+    "blocked_count": 0,
+    "dispatchable_interactions": [{"interaction_id": ledger_interaction_id}],
+})
+check(
+    "correction dispatch summary : fallback enveloppes dispatchables",
+    ledger_interaction_id in fallback_dispatch_summary,
+    fallback_dispatch_summary,
+)
 blocked_dispatch_payload = _correction_dispatch_payload(
     ledger_tracker,
     correction_attempt_budget=1,

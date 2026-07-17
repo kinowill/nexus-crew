@@ -1031,11 +1031,13 @@ def _correction_dispatch_summary(payload: dict, strict_correction_dispatch: bool
     status = payload.get("status", CORRECTION_DISPATCH_NO_DISPATCH_NEEDED)
     dispatchable_count = payload.get("dispatchable_count", 0)
     blocked_count = payload.get("blocked_count", 0)
-    dispatchable_ids = [
-        interaction["interaction_id"]
-        for interaction in payload.get("dispatchable_interactions", [])
-        if "interaction_id" in interaction
-    ]
+    dispatchable_ids = list(payload.get("dispatchable_interaction_ids", []))
+    if not dispatchable_ids:
+        dispatchable_ids = [
+            interaction["interaction_id"]
+            for interaction in payload.get("dispatchable_interactions", [])
+            if "interaction_id" in interaction
+        ]
     blocked_ids = list(payload.get("blocked_interaction_ids", []))
     lines = [
         "[CORRECTION] dispatch dry-run : "
