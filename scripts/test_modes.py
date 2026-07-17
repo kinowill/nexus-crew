@@ -19,6 +19,8 @@ import json
 import os
 import sys
 import tempfile
+import contextlib
+import io
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -33,6 +35,7 @@ _spec.loader.exec_module(_mod)
 
 os.environ.setdefault("CREW_PROJECT", str(ROOT))
 
+import crew.crew as crew_module  # noqa: E402
 from crew.crew import (  # noqa: E402
     build_crew,
     VALID_MODES,
@@ -439,6 +442,62 @@ check(
     str(written_next_ledger),
 )
 check("correction next ledger : fichier relisible", next_by_task == {"research": 1} and next_by_interaction == {ledger_interaction_id: 2})
+with tempfile.TemporaryDirectory(dir=ROOT) as tmpdir:
+    supplied_next_path = _write_correction_next_ledger_json(
+        ROOT,
+        str(Path(tmpdir) / "next-ledger-supplied.json"),
+        ContractTracker(),
+        correction_attempt_budget=0,
+        payload=dispatch_payload["next_ledger"],
+    )
+    supplied_next_payload = json.loads(supplied_next_path.read_text(encoding="utf-8"))
+check(
+    "correction next ledger : payload fourni ecrit sans recalcul",
+    supplied_next_payload == dispatch_payload["next_ledger"],
+    str(supplied_next_payload),
+)
+original_argv = sys.argv[:]
+original_build_crew = crew_module.build_crew
+with tempfile.TemporaryDirectory(dir=ROOT) as tmpdir:
+    cli_next_ledger_path = Path(tmpdir) / "cli-next-ledger.json"
+    cli_stdout = io.StringIO()
+
+    def fake_build_crew(task, project_path, deep=False, tracker=None, mode=None):
+        tracker.register("fake research task", "research")
+        tracker.on_task_done(task_output("fake research task", "too short", tools=[]))
+        return SimpleNamespace(kickoff=lambda: "fake result")
+
+    try:
+        crew_module.build_crew = fake_build_crew
+        sys.argv = [
+            "crew.py",
+            "fake task",
+            "--project",
+            str(ROOT),
+            "--mode",
+            "read",
+            "--correction-next-ledger-json",
+            str(cli_next_ledger_path),
+        ]
+        cli_exit_code = 0
+        with contextlib.redirect_stdout(cli_stdout):
+            crew_module.main()
+    except SystemExit as e:
+        cli_exit_code = int(e.code or 0)
+    finally:
+        crew_module.build_crew = original_build_crew
+        sys.argv = original_argv
+    cli_output = cli_stdout.getvalue()
+    cli_next_ledger_payload = json.loads(cli_next_ledger_path.read_text(encoding="utf-8"))
+check(
+    "correction next ledger cli : affiche resume dispatch",
+    cli_exit_code == 0
+    and "[CORRECTION] next ledger JSON ecrit" in cli_output
+    and "[CORRECTION] dispatch dry-run : DISPATCH_AVAILABLE" in cli_output
+    and "[CORRECTION] dispatchable ids :" in cli_output
+    and cli_next_ledger_payload["attempts_used_by_interaction_id"],
+    cli_output,
+)
 blocked_next_path_payload = _correction_dispatch_payload(
     ledger_tracker,
     correction_attempt_budget=1,

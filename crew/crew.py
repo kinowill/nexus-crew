@@ -1002,16 +1002,18 @@ def _write_correction_next_ledger_json(
     correction_attempt_budget: int,
     attempts_used_by_task: dict[str, int] | None = None,
     attempts_used_by_interaction_id: dict[str, int] | None = None,
+    payload: dict | None = None,
 ) -> Path:
     """Write the next correction ledger projected by the dry-run dispatch."""
     ledger_path = _resolve_correction_ledger_json_path(project_path, target)
     ledger_path.parent.mkdir(parents=True, exist_ok=True)
-    payload = _correction_dispatch_payload(
-        tracker=tracker,
-        correction_attempt_budget=correction_attempt_budget,
-        attempts_used_by_task=attempts_used_by_task,
-        attempts_used_by_interaction_id=attempts_used_by_interaction_id,
-    )["next_ledger"]
+    if payload is None:
+        payload = _correction_dispatch_payload(
+            tracker=tracker,
+            correction_attempt_budget=correction_attempt_budget,
+            attempts_used_by_task=attempts_used_by_task,
+            attempts_used_by_interaction_id=attempts_used_by_interaction_id,
+        )["next_ledger"]
     ledger_path.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
@@ -1585,6 +1587,7 @@ def main():
             print(f"ERREUR : impossible d'ecrire le ledger correctif JSON : {e}")
             sys.exit(1)
     dispatch_payload_for_summary: dict | None = None
+    dispatch_summary_printed = False
     if args.correction_dispatch_json:
         try:
             dispatch_payload_for_summary = _correction_dispatch_payload(
@@ -1607,11 +1610,19 @@ def main():
                 dispatch_payload_for_summary,
                 strict_correction_dispatch=args.strict_correction_dispatch,
             ))
+            dispatch_summary_printed = True
         except Exception as e:
             print(f"ERREUR : impossible d'ecrire le manifeste dispatch correctif JSON : {e}")
             sys.exit(1)
     if args.correction_next_ledger_json:
         try:
+            if dispatch_payload_for_summary is None:
+                dispatch_payload_for_summary = _correction_dispatch_payload(
+                    tracker=tracker,
+                    correction_attempt_budget=args.correction_attempt_budget,
+                    attempts_used_by_task=attempts_used_by_task,
+                    attempts_used_by_interaction_id=attempts_used_by_interaction_id,
+                )
             next_ledger_path = _write_correction_next_ledger_json(
                 project_path=project_path,
                 target=args.correction_next_ledger_json,
@@ -1619,21 +1630,29 @@ def main():
                 correction_attempt_budget=args.correction_attempt_budget,
                 attempts_used_by_task=attempts_used_by_task,
                 attempts_used_by_interaction_id=attempts_used_by_interaction_id,
+                payload=dispatch_payload_for_summary["next_ledger"],
             )
             print(f"[CORRECTION] next ledger JSON ecrit : {next_ledger_path}")
+            if not dispatch_summary_printed:
+                print(_correction_dispatch_summary(
+                    dispatch_payload_for_summary,
+                    strict_correction_dispatch=args.strict_correction_dispatch,
+                ))
+                dispatch_summary_printed = True
         except Exception as e:
             print(f"ERREUR : impossible d'ecrire le next ledger correctif JSON : {e}")
             sys.exit(1)
     governance_exit_code = tracker.exit_code(strict_contracts=args.strict_contracts)
     if governance_exit_code:
         sys.exit(governance_exit_code)
-    if args.strict_correction_dispatch and dispatch_payload_for_summary is None:
-        dispatch_payload_for_summary = _correction_dispatch_payload(
-            tracker=tracker,
-            correction_attempt_budget=args.correction_attempt_budget,
-            attempts_used_by_task=attempts_used_by_task,
-            attempts_used_by_interaction_id=attempts_used_by_interaction_id,
-        )
+    if args.strict_correction_dispatch and not dispatch_summary_printed:
+        if dispatch_payload_for_summary is None:
+            dispatch_payload_for_summary = _correction_dispatch_payload(
+                tracker=tracker,
+                correction_attempt_budget=args.correction_attempt_budget,
+                attempts_used_by_task=attempts_used_by_task,
+                attempts_used_by_interaction_id=attempts_used_by_interaction_id,
+            )
         print(_correction_dispatch_summary(
             dispatch_payload_for_summary,
             strict_correction_dispatch=True,
