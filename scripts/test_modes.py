@@ -295,6 +295,11 @@ check(
     f"exit code {CORRECTION_DISPATCH_AVAILABLE_EXIT_CODE}" in available_dispatch_summary,
     available_dispatch_summary,
 )
+check(
+    "correction dispatch summary : id dispatchable visible",
+    ledger_interaction_id in available_dispatch_summary,
+    available_dispatch_summary,
+)
 blocked_dispatch_payload = _correction_dispatch_payload(
     ledger_tracker,
     correction_attempt_budget=1,
@@ -309,6 +314,12 @@ check(
     "correction dispatch : interaction bloquee listee",
     blocked_dispatch_payload["blocked_interaction_ids"] == [ledger_interaction_id],
     str(blocked_dispatch_payload),
+)
+blocked_dispatch_summary = _correction_dispatch_summary(blocked_dispatch_payload)
+check(
+    "correction dispatch summary : id bloque visible",
+    ledger_interaction_id in blocked_dispatch_summary,
+    blocked_dispatch_summary,
 )
 check(
     "correction dispatch exit : budget epuise reste 0",

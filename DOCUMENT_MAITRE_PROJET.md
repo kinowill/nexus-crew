@@ -780,6 +780,7 @@ Autrement dit :
 - **§S — Exit code strict pour dispatch correctif disponible** : ✅ FAIT (2026-07-17). Le CLI expose `--strict-correction-dispatch` pour retourner exit code 3 quand un dispatch correctif dry-run est disponible, sans relance automatique. `--strict-contracts` garde la priorité avec exit code 2.
 - **§T — Résumé CLI du dispatch correctif strict** : ✅ FAIT (2026-07-17). Quand `--strict-correction-dispatch` est actif, le CLI imprime un résumé compact du statut dry-run, du nombre d'interactions dispatchables/bloquées et de l'exit code 3 éventuel avant de sortir. Aucun ledger n'est consommé et aucune relance automatique n'est exécutée.
 - **§U — Résumé CLI du manifeste dispatch JSON** : ✅ FAIT (2026-07-17). `--correction-dispatch-json` imprime maintenant le même résumé compact que le mode strict après écriture du manifeste. Le payload est calculé une seule fois puis réutilisé pour l'écriture et l'affichage, sans consommer de ledger et sans relance automatique.
+- **§V — IDs d'interactions dans le résumé dispatch** : ✅ FAIT (2026-07-17). Le résumé CLI du dispatch affiche maintenant les `interaction_id` dispatchables et bloqués, bornés à 5 IDs par ligne avec compteur résiduel. Cela rend la reprise plus directe sans ouvrir le JSON et sans changer le payload.
 - autoriser les interactions inter-agents utiles ;
 - les typer proprement ;
 - borner les boucles ;
@@ -853,7 +854,7 @@ Pour le développeur :
 **Scripts de validation / diagnostic (offline, sans réseau)**
 - `scripts/test_phase0.py` — validation statique Phase 0 (22/22)
 - `scripts/test_resilience.py` — tests unitaires résilience NIM §3 + §3bis (31/31)
-- `scripts/test_modes.py` — tests unitaires modes d'usage Phase 1 §2 + gardes chemin JSON/ledger/dispatch, snapshot correctif, next ledger, statuts dispatch, résumés CLI, exit strict et schémas (71/71)
+- `scripts/test_modes.py` — tests unitaires modes d'usage Phase 1 §2 + gardes chemin JSON/ledger/dispatch, snapshot correctif, next ledger, statuts dispatch, résumés CLI avec IDs, exit strict et schémas (73/73)
 - `scripts/test_contracts.py` — tests contrats + rapports de gouvernance Phase 2 §A/§B/§C/§D/§E/§F/§G/§H/§I/§J/§K/§L (76/76)
 - `test_phase0.bat` — lanceur Windows pour `test_phase0.py`
 
@@ -876,6 +877,18 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 > Trace des modifications apportées au projet, conformément au protocole
 > (distinction repo modifié / prod alignée / validation réelle).
 > Les entrées les plus récentes sont en haut.
+
+### 2026-07-17 — Phase 2 §V / IDs d'interactions dans le résumé dispatch
+
+- **Scope** : `crew/crew.py`, `scripts/test_modes.py`, `README.md`, `DOCUMENT_MAITRE_PROJET.md`.
+- **Motivation** : les résumés CLI donnaient le statut et les comptes, mais pas les `interaction_id` exacts à reprendre ou à inspecter.
+- **Changement appliqué** : le résumé dispatch affiche maintenant les IDs dispatchables et bloqués, bornés à 5 par ligne avec compteur résiduel. Le JSON et les décisions de dispatch restent inchangés.
+- **Tests ajoutés** : `scripts/test_modes.py` couvre l'affichage d'un ID dispatchable et d'un ID bloqué dans les résumés.
+- **Validation offline** : `test_contracts.py` 76/76 OK, `test_modes.py` 73/73 OK, `test_resilience.py` 31/31 OK, `test_phase0.py` 22/22 OK, `crew.py --help` OK, `ruff check crew scripts` OK, `py_compile` OK, `git diff --check` OK.
+- **Repo modifié** : oui.
+- **Prod alignée** : N/A (outil local).
+- **Validation runtime NIM** : non nécessaire pour cette slice CLI/tests offline uniquement.
+- **Commit** : *(ce commit).*
 
 ### 2026-07-17 — Phase 2 §U / Résumé CLI du manifeste dispatch JSON
 

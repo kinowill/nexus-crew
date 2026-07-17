@@ -1012,15 +1012,32 @@ def _write_correction_next_ledger_json(
     return ledger_path
 
 
+def _format_dispatch_ids(label: str, interaction_ids: list[str], limit: int = 5) -> str:
+    """Return one compact summary line for dispatch interaction ids."""
+    visible_ids = interaction_ids[:limit]
+    suffix = f" (+{len(interaction_ids) - limit})" if len(interaction_ids) > limit else ""
+    return f"[CORRECTION] {label} ids : {', '.join(visible_ids)}{suffix}"
+
+
 def _correction_dispatch_summary(payload: dict, strict_correction_dispatch: bool = False) -> str:
     """Return a compact human-readable summary for corrective dispatch state."""
     status = payload.get("status", CORRECTION_DISPATCH_NO_DISPATCH_NEEDED)
     dispatchable_count = payload.get("dispatchable_count", 0)
     blocked_count = payload.get("blocked_count", 0)
+    dispatchable_ids = [
+        interaction["interaction_id"]
+        for interaction in payload.get("dispatchable_interactions", [])
+        if "interaction_id" in interaction
+    ]
+    blocked_ids = list(payload.get("blocked_interaction_ids", []))
     lines = [
         "[CORRECTION] dispatch dry-run : "
         f"{status} ({dispatchable_count} dispatchable, {blocked_count} bloquee(s))"
     ]
+    if dispatchable_ids:
+        lines.append(_format_dispatch_ids("dispatchable", dispatchable_ids))
+    if blocked_ids:
+        lines.append(_format_dispatch_ids("blocked", blocked_ids))
     if strict_correction_dispatch and status == CORRECTION_DISPATCH_AVAILABLE:
         lines.append(
             "[CORRECTION] strict dispatch : exit code "
