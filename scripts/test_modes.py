@@ -269,6 +269,11 @@ check("correction dispatch : schema version present", dispatch_payload["schema_v
 check("correction dispatch : dispatch disponible", dispatch_payload["status"] == CORRECTION_DISPATCH_AVAILABLE, str(dispatch_payload))
 check("correction dispatch : une interaction dispatchable", dispatch_payload["dispatchable_count"] == 1, str(dispatch_payload))
 check(
+    "correction dispatch : id dispatchable expose",
+    dispatch_payload["dispatchable_interaction_ids"] == [ledger_interaction_id],
+    str(dispatch_payload),
+)
+check(
     "correction dispatch : next ledger interaction incrementee",
     dispatch_payload["next_ledger"]["attempts_used_by_interaction_id"] == {ledger_interaction_id: 2},
     str(dispatch_payload),
@@ -365,6 +370,11 @@ with tempfile.TemporaryDirectory(dir=ROOT) as tmpdir:
     )
     written_dispatch_payload = json.loads(dispatch_path.read_text(encoding="utf-8"))
 check("correction dispatch : fichier ecrit", written_dispatch_payload["dispatchable_count"] == 1, str(written_dispatch_payload))
+check(
+    "correction dispatch : fichier expose ids dispatchables",
+    written_dispatch_payload["dispatchable_interaction_ids"] == [ledger_interaction_id],
+    str(written_dispatch_payload),
+)
 with tempfile.TemporaryDirectory(dir=ROOT) as tmpdir:
     supplied_dispatch_path = _write_correction_dispatch_json(
         ROOT,

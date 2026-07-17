@@ -926,6 +926,10 @@ def _correction_dispatch_payload(
         interaction for interaction in interactions
         if interaction.get("should_dispatch")
     ]
+    dispatchable_ids = sorted(
+        interaction["interaction_id"]
+        for interaction in dispatchable
+    )
     blocked_ids = sorted(
         interaction["interaction_id"]
         for interaction in interactions
@@ -949,8 +953,9 @@ def _correction_dispatch_payload(
         "status": status,
         "dispatchable_count": len(dispatchable),
         "blocked_count": len(blocked_ids),
-        "dispatchable_interactions": dispatchable,
+        "dispatchable_interaction_ids": dispatchable_ids,
         "blocked_interaction_ids": blocked_ids,
+        "dispatchable_interactions": dispatchable,
         "correction_plan": tracker.correction_plan_payload(
             attempts_budget=correction_attempt_budget,
             attempts_used_by_task=attempts_used_by_task,

@@ -34,7 +34,7 @@ contraintes de securite.
 |---|---|---|
 | **Phase 0** | Hardening fondations (shell, permissions, install determ.) | ✅ CLOTUREE |
 | **Phase 1** | Refactor protocole + contrats de sortie | ✅ SOCLE STABILISE (§0 tool use NIM, §1 contrats, §2 modes CLI, §3 resilience NIM) |
-| **Phase 2** | Cooperation multi-agent reelle | 🔄 EN COURS (§A-§X ✅ gouvernance corrective, mode auto/debug, dispatch dry-run tracable) |
+| **Phase 2** | Cooperation multi-agent reelle | 🔄 EN COURS (§A-§Y ✅ gouvernance corrective, mode auto/debug, dispatch dry-run tracable) |
 | Phase 3 | Intelligence depot lourd | ⏳ a venir |
 | Phase 4 | Qualite produit | ⏳ a venir |
 | Phase 5 | Vers autonomie plus elevee | ⏳ a venir |
@@ -328,7 +328,7 @@ AGENTIQUE/
 │   ├── discover_models.py   # Inventaire modele NIM
 │   ├── test_phase0.py       # Validation statique Phase 0 (22/22)
 │   ├── test_resilience.py   # Tests unitaires resilience NIM §3/§3bis (31/31)
-│   ├── test_modes.py        # Tests unitaires modes d'usage Phase 1 §2 + gardes JSON/ledger/dispatch + mode auto/debug (87/87)
+│   ├── test_modes.py        # Tests unitaires modes d'usage Phase 1 §2 + gardes JSON/ledger/dispatch + mode auto/debug (89/89)
 │   ├── test_contracts.py    # Tests contrats + rapports gouvernance Phase 2 §A-§L (76/76)
 │   ├── test_tool_use.py     # Matrice tool use par modele NIM
 │   ├── tool_use_matrix.md   # Resultats de la matrice
@@ -353,7 +353,7 @@ AGENTIQUE/
   `--strict-contracts`. Un rapport JSON peut etre ecrit avec
   `--governance-json`; elles incluent `severity`, `action_hint`,
   `schema_version`, `correction_plan`, `corrective_interactions`,
-  `interaction_type`, `interaction_id`, `corrective_actions`, snapshot ledger versionne, manifeste dispatch dry-run avec résumé CLI et IDs, next ledger relisible et exit strict optionnel, mais ne
+  `interaction_type`, `interaction_id`, `corrective_actions`, snapshot ledger versionne, manifeste dispatch dry-run avec résumé CLI et IDs au premier niveau JSON, next ledger relisible et exit strict optionnel, mais ne
   declenchent pas encore de retry automatique.
 - `planning=True` et `memory=True` CrewAI restent desactives sur NIM
   (incompat documentee).

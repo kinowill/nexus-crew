@@ -783,6 +783,7 @@ Autrement dit :
 - **§V — IDs d'interactions dans le résumé dispatch** : ✅ FAIT (2026-07-17). Le résumé CLI du dispatch affiche maintenant les `interaction_id` dispatchables et bloqués, bornés à 5 IDs par ligne avec compteur résiduel. Cela rend la reprise plus directe sans ouvrir le JSON et sans changer le payload.
 - **§W — Mode auto local sans appel LLM dédié** : ✅ FAIT (2026-07-17). `--mode auto` résout la demande vers `read`, `review`, `debug` ou `edit` via heuristique locale déterministe. Le défaut CLI reste `edit`, et les modes explicites gardent priorité sur la classification.
 - **§X — Différenciation prompt-level du mode debug** : ✅ FAIT (2026-07-17). `debug` conserve la même composition que `edit`, mais ajoute des consignes par task sur reproduction, cause racine, patch minimal, review ciblée et synthèse de validation. Aucun agent, outil ou retry automatique supplémentaire n'est ajouté.
+- **§Y — IDs dispatchables au premier niveau du manifeste** : ✅ FAIT (2026-07-17). Le manifeste dry-run expose maintenant `dispatchable_interaction_ids` en plus des enveloppes complètes, aligné avec `blocked_interaction_ids`. Les automatisations peuvent consommer directement les IDs sans reparcourir `dispatchable_interactions`.
 - autoriser les interactions inter-agents utiles ;
 - les typer proprement ;
 - borner les boucles ;
@@ -856,7 +857,7 @@ Pour le développeur :
 **Scripts de validation / diagnostic (offline, sans réseau)**
 - `scripts/test_phase0.py` — validation statique Phase 0 (22/22)
 - `scripts/test_resilience.py` — tests unitaires résilience NIM §3 + §3bis (31/31)
-- `scripts/test_modes.py` — tests unitaires modes d'usage Phase 1 §2 + gardes chemin JSON/ledger/dispatch, snapshot correctif, next ledger, statuts dispatch, résumés CLI avec IDs, mode auto/debug, exit strict et schémas (87/87)
+- `scripts/test_modes.py` — tests unitaires modes d'usage Phase 1 §2 + gardes chemin JSON/ledger/dispatch, snapshot correctif, next ledger, statuts dispatch, résumés CLI avec IDs, mode auto/debug, exit strict et schémas (89/89)
 - `scripts/test_contracts.py` — tests contrats + rapports de gouvernance Phase 2 §A/§B/§C/§D/§E/§F/§G/§H/§I/§J/§K/§L (76/76)
 - `test_phase0.bat` — lanceur Windows pour `test_phase0.py`
 
@@ -880,6 +881,18 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 > (distinction repo modifié / prod alignée / validation réelle).
 > Les entrées les plus récentes sont en haut.
 
+### 2026-07-17 — Phase 2 §Y / IDs dispatchables au premier niveau du manifeste
+
+- **Scope** : `crew/crew.py`, `scripts/test_modes.py`, `README.md`, `DOCUMENT_MAITRE_PROJET.md`.
+- **Motivation** : le manifeste dry-run exposait déjà les enveloppes dispatchables et les IDs bloqués, mais les automatisations devaient reparcourir `dispatchable_interactions` pour obtenir la liste simple des IDs à reprendre.
+- **Changement appliqué** : ajout de `dispatchable_interaction_ids` dans `_correction_dispatch_payload()`, trié et placé au premier niveau du JSON, en miroir de `blocked_interaction_ids`. Aucun dispatch réel, aucun ledger consommé, aucun retry automatique.
+- **Tests ajoutés** : `scripts/test_modes.py` vérifie le champ dans le payload direct et dans le fichier écrit par `_write_correction_dispatch_json()`.
+- **Validation offline** : `test_contracts.py` 76/76 OK, `test_modes.py` 89/89 OK, `test_resilience.py` 31/31 OK, `test_phase0.py` 22/22 OK, `crew.py --help` OK, `ruff check crew scripts` OK, `py_compile` OK, `git diff --check` OK.
+- **Repo modifié** : oui.
+- **Prod alignée** : N/A (outil local).
+- **Validation runtime NIM** : non nécessaire pour cette slice JSON/tests offline uniquement.
+- **Commit** : *(ce commit).*
+
 ### 2026-07-17 — Phase 2 §X / Différenciation prompt-level du mode debug
 
 - **Scope** : `crew/crew.py`, `scripts/test_modes.py`, `README.md`, `DOCUMENT_MAITRE_PROJET.md`.
@@ -891,6 +904,7 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 - **Prod alignée** : N/A (outil local).
 - **Validation runtime NIM** : non effectuée; le changement est prompt-level et couvert structurellement offline, mais l'effet qualitatif devra être observé sur un vrai bug.
 - **Commit** : *(ce commit).*
+
 ### 2026-07-17 — Phase 2 §W / Mode auto local sans appel LLM dédié
 
 - **Scope** : `crew/crew.py`, `scripts/test_modes.py`, `README.md`, `DOCUMENT_MAITRE_PROJET.md`.
