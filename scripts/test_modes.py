@@ -346,6 +346,20 @@ with tempfile.TemporaryDirectory(dir=ROOT) as tmpdir:
     )
     written_dispatch_payload = json.loads(dispatch_path.read_text(encoding="utf-8"))
 check("correction dispatch : fichier ecrit", written_dispatch_payload["dispatchable_count"] == 1, str(written_dispatch_payload))
+with tempfile.TemporaryDirectory(dir=ROOT) as tmpdir:
+    supplied_dispatch_path = _write_correction_dispatch_json(
+        ROOT,
+        str(Path(tmpdir) / "dispatch-supplied.json"),
+        ContractTracker(),
+        correction_attempt_budget=0,
+        payload=dispatch_payload,
+    )
+    supplied_dispatch_payload = json.loads(supplied_dispatch_path.read_text(encoding="utf-8"))
+check(
+    "correction dispatch : payload fourni ecrit sans recalcul",
+    supplied_dispatch_payload["next_ledger"] == dispatch_payload["next_ledger"],
+    str(supplied_dispatch_payload),
+)
 try:
     _write_correction_dispatch_json(
         ROOT,

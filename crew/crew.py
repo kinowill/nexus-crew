@@ -969,16 +969,18 @@ def _write_correction_dispatch_json(
     correction_attempt_budget: int,
     attempts_used_by_task: dict[str, int] | None = None,
     attempts_used_by_interaction_id: dict[str, int] | None = None,
+    payload: dict | None = None,
 ) -> Path:
     """Write a dry-run correction dispatch manifest under the project root."""
     dispatch_path = _resolve_correction_dispatch_json_path(project_path, target)
     dispatch_path.parent.mkdir(parents=True, exist_ok=True)
-    payload = _correction_dispatch_payload(
-        tracker=tracker,
-        correction_attempt_budget=correction_attempt_budget,
-        attempts_used_by_task=attempts_used_by_task,
-        attempts_used_by_interaction_id=attempts_used_by_interaction_id,
-    )
+    if payload is None:
+        payload = _correction_dispatch_payload(
+            tracker=tracker,
+            correction_attempt_budget=correction_attempt_budget,
+            attempts_used_by_task=attempts_used_by_task,
+            attempts_used_by_interaction_id=attempts_used_by_interaction_id,
+        )
     dispatch_path.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
@@ -1327,7 +1329,8 @@ def main():
                              "N'incremente aucune tentative et n'active pas de retry automatique.")
     parser.add_argument("--correction-dispatch-json",
                         help="Ecrit un manifeste dry-run des interactions correctives dispatchables "
-                             "et du prochain ledger sous --project. N'active pas de retry automatique.")
+                             "et du prochain ledger sous --project, puis imprime son resume. "
+                             "N'active pas de retry automatique.")
     parser.add_argument("--correction-next-ledger-json",
                         help="Ecrit directement le next_ledger projeté sous --project, reutilisable "
                              "avec --correction-ledger-json. N'active pas de retry automatique.")
@@ -1455,8 +1458,15 @@ def main():
         except Exception as e:
             print(f"ERREUR : impossible d'ecrire le ledger correctif JSON : {e}")
             sys.exit(1)
+    dispatch_payload_for_summary: dict | None = None
     if args.correction_dispatch_json:
         try:
+            dispatch_payload_for_summary = _correction_dispatch_payload(
+                tracker=tracker,
+                correction_attempt_budget=args.correction_attempt_budget,
+                attempts_used_by_task=attempts_used_by_task,
+                attempts_used_by_interaction_id=attempts_used_by_interaction_id,
+            )
             dispatch_path = _write_correction_dispatch_json(
                 project_path=project_path,
                 target=args.correction_dispatch_json,
@@ -1464,8 +1474,13 @@ def main():
                 correction_attempt_budget=args.correction_attempt_budget,
                 attempts_used_by_task=attempts_used_by_task,
                 attempts_used_by_interaction_id=attempts_used_by_interaction_id,
+                payload=dispatch_payload_for_summary,
             )
             print(f"[CORRECTION] manifeste dispatch JSON ecrit : {dispatch_path}")
+            print(_correction_dispatch_summary(
+                dispatch_payload_for_summary,
+                strict_correction_dispatch=args.strict_correction_dispatch,
+            ))
         except Exception as e:
             print(f"ERREUR : impossible d'ecrire le manifeste dispatch correctif JSON : {e}")
             sys.exit(1)
@@ -1486,15 +1501,15 @@ def main():
     governance_exit_code = tracker.exit_code(strict_contracts=args.strict_contracts)
     if governance_exit_code:
         sys.exit(governance_exit_code)
-    if args.strict_correction_dispatch:
-        dispatch_payload = _correction_dispatch_payload(
+    if args.strict_correction_dispatch and dispatch_payload_for_summary is None:
+        dispatch_payload_for_summary = _correction_dispatch_payload(
             tracker=tracker,
             correction_attempt_budget=args.correction_attempt_budget,
             attempts_used_by_task=attempts_used_by_task,
             attempts_used_by_interaction_id=attempts_used_by_interaction_id,
         )
         print(_correction_dispatch_summary(
-            dispatch_payload,
+            dispatch_payload_for_summary,
             strict_correction_dispatch=True,
         ))
     dispatch_exit_code = _correction_dispatch_exit_code(
