@@ -1010,6 +1010,23 @@ def _write_correction_next_ledger_json(
     return ledger_path
 
 
+def _correction_dispatch_summary(payload: dict, strict_correction_dispatch: bool = False) -> str:
+    """Return a compact human-readable summary for corrective dispatch state."""
+    status = payload.get("status", CORRECTION_DISPATCH_NO_DISPATCH_NEEDED)
+    dispatchable_count = payload.get("dispatchable_count", 0)
+    blocked_count = payload.get("blocked_count", 0)
+    lines = [
+        "[CORRECTION] dispatch dry-run : "
+        f"{status} ({dispatchable_count} dispatchable, {blocked_count} bloquee(s))"
+    ]
+    if strict_correction_dispatch and status == CORRECTION_DISPATCH_AVAILABLE:
+        lines.append(
+            "[CORRECTION] strict dispatch : exit code "
+            f"{CORRECTION_DISPATCH_AVAILABLE_EXIT_CODE}"
+        )
+    return "\n".join(lines)
+
+
 def _correction_dispatch_exit_code(
     tracker: ContractTracker,
     strict_correction_dispatch: bool = False,
@@ -1469,6 +1486,17 @@ def main():
     governance_exit_code = tracker.exit_code(strict_contracts=args.strict_contracts)
     if governance_exit_code:
         sys.exit(governance_exit_code)
+    if args.strict_correction_dispatch:
+        dispatch_payload = _correction_dispatch_payload(
+            tracker=tracker,
+            correction_attempt_budget=args.correction_attempt_budget,
+            attempts_used_by_task=attempts_used_by_task,
+            attempts_used_by_interaction_id=attempts_used_by_interaction_id,
+        )
+        print(_correction_dispatch_summary(
+            dispatch_payload,
+            strict_correction_dispatch=True,
+        ))
     dispatch_exit_code = _correction_dispatch_exit_code(
         tracker=tracker,
         strict_correction_dispatch=args.strict_correction_dispatch,

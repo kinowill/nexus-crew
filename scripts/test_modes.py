@@ -46,6 +46,7 @@ from crew.crew import (  # noqa: E402
     _correction_attempt_ledger_payload,
     _correction_dispatch_exit_code,
     _correction_dispatch_payload,
+    _correction_dispatch_summary,
     _load_correction_attempt_ledger,
     _resolve_correction_dispatch_json_path,
     _resolve_correction_ledger_json_path,
@@ -280,6 +281,20 @@ check(
         correction_attempt_budget=2,
     ) == CORRECTION_DISPATCH_AVAILABLE_EXIT_CODE,
 )
+available_dispatch_summary = _correction_dispatch_summary(
+    dispatch_payload,
+    strict_correction_dispatch=True,
+)
+check(
+    "correction dispatch summary : statut disponible visible",
+    CORRECTION_DISPATCH_AVAILABLE in available_dispatch_summary,
+    available_dispatch_summary,
+)
+check(
+    "correction dispatch summary : strict annonce exit 3",
+    f"exit code {CORRECTION_DISPATCH_AVAILABLE_EXIT_CODE}" in available_dispatch_summary,
+    available_dispatch_summary,
+)
 blocked_dispatch_payload = _correction_dispatch_payload(
     ledger_tracker,
     correction_attempt_budget=1,
@@ -306,6 +321,13 @@ check(
 )
 clean_dispatch_payload = _correction_dispatch_payload(ContractTracker(), correction_attempt_budget=1)
 check("correction dispatch : rien a dispatcher", clean_dispatch_payload["status"] == CORRECTION_DISPATCH_NO_DISPATCH_NEEDED, str(clean_dispatch_payload))
+check(
+    "correction dispatch summary : non strict masque exit 3",
+    "exit code 3" not in _correction_dispatch_summary(
+        dispatch_payload,
+        strict_correction_dispatch=False,
+    ),
+)
 check(
     "correction dispatch exit : rien a dispatcher reste 0",
     _correction_dispatch_exit_code(

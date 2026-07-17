@@ -778,6 +778,7 @@ Autrement dit :
 - **§Q — Écriture directe du next ledger correctif** : ✅ FAIT (2026-07-16). Le CLI expose `--correction-next-ledger-json` pour écrire directement, sous `--project`, le `next_ledger` projeté par le manifeste dry-run. Le fichier produit est relisible par `--correction-ledger-json`; aucune relance automatique n'est exécutée.
 - **§R — Constantes de statuts dispatch correctif** : ✅ FAIT (2026-07-16). Les statuts du manifeste dry-run sont centralisés (`DISPATCH_AVAILABLE`, `DISPATCH_BLOCKED_BUDGET_EXHAUSTED`, `NO_DISPATCH_NEEDED`) pour éviter les chaînes brutes dans le code appelant. Le JSON produit reste compatible.
 - **§S — Exit code strict pour dispatch correctif disponible** : ✅ FAIT (2026-07-17). Le CLI expose `--strict-correction-dispatch` pour retourner exit code 3 quand un dispatch correctif dry-run est disponible, sans relance automatique. `--strict-contracts` garde la priorité avec exit code 2.
+- **§T — Résumé CLI du dispatch correctif strict** : ✅ FAIT (2026-07-17). Quand `--strict-correction-dispatch` est actif, le CLI imprime un résumé compact du statut dry-run, du nombre d'interactions dispatchables/bloquées et de l'exit code 3 éventuel avant de sortir. Aucun ledger n'est consommé et aucune relance automatique n'est exécutée.
 - autoriser les interactions inter-agents utiles ;
 - les typer proprement ;
 - borner les boucles ;
@@ -851,7 +852,7 @@ Pour le développeur :
 **Scripts de validation / diagnostic (offline, sans réseau)**
 - `scripts/test_phase0.py` — validation statique Phase 0 (22/22)
 - `scripts/test_resilience.py` — tests unitaires résilience NIM §3 + §3bis (31/31)
-- `scripts/test_modes.py` — tests unitaires modes d'usage Phase 1 §2 + gardes chemin JSON/ledger/dispatch, snapshot correctif, next ledger, statuts dispatch, exit strict et schémas (67/67)
+- `scripts/test_modes.py` — tests unitaires modes d'usage Phase 1 §2 + gardes chemin JSON/ledger/dispatch, snapshot correctif, next ledger, statuts dispatch, exit strict, résumé CLI et schémas (70/70)
 - `scripts/test_contracts.py` — tests contrats + rapports de gouvernance Phase 2 §A/§B/§C/§D/§E/§F/§G/§H/§I/§J/§K/§L (76/76)
 - `test_phase0.bat` — lanceur Windows pour `test_phase0.py`
 
@@ -874,6 +875,18 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 > Trace des modifications apportées au projet, conformément au protocole
 > (distinction repo modifié / prod alignée / validation réelle).
 > Les entrées les plus récentes sont en haut.
+
+### 2026-07-17 — Phase 2 §T / Résumé CLI du dispatch correctif strict
+
+- **Scope** : `crew/crew.py`, `scripts/test_modes.py`, `README.md`, `DOCUMENT_MAITRE_PROJET.md`.
+- **Motivation** : `--strict-correction-dispatch` donnait un signal d'automatisation via exit code 3, mais le terminal ne rendait pas encore ce signal explicitement lisible au moment de sortir.
+- **Changement appliqué** : ajout d'un résumé CLI compact du dispatch dry-run quand `--strict-correction-dispatch` est actif. Il affiche le statut, le nombre d'interactions dispatchables/bloquées et l'exit code 3 quand il s'applique. Aucun retry automatique et aucune consommation de ledger.
+- **Tests ajoutés** : `scripts/test_modes.py` couvre le résumé disponible, l'annonce de l'exit code 3 en strict et l'absence d'annonce en non strict.
+- **Validation offline** : `test_contracts.py` 76/76 OK, `test_modes.py` 70/70 OK, `test_resilience.py` 31/31 OK, `test_phase0.py` 22/22 OK, `crew.py --help` OK, `ruff check crew scripts` OK, `py_compile` OK, `git diff --check` OK.
+- **Repo modifié** : oui.
+- **Prod alignée** : N/A (outil local).
+- **Validation runtime NIM** : non nécessaire pour cette slice CLI/tests offline uniquement.
+- **Commit** : *(ce commit).*
 
 ### 2026-07-17 — Phase 2 §S / Exit code strict pour dispatch correctif disponible
 

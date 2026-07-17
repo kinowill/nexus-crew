@@ -34,7 +34,7 @@ contraintes de securite.
 |---|---|---|
 | **Phase 0** | Hardening fondations (shell, permissions, install determ.) | ✅ CLOTUREE |
 | **Phase 1** | Refactor protocole + contrats de sortie | ✅ SOCLE STABILISE (§0 tool use NIM, §1 contrats, §2 modes CLI, §3 resilience NIM) |
-| **Phase 2** | Cooperation multi-agent reelle | 🔄 EN COURS (§A-§S ✅ gouvernance corrective, JSON versionne, dispatch dry-run, exit strict) |
+| **Phase 2** | Cooperation multi-agent reelle | 🔄 EN COURS (§A-§T ✅ gouvernance corrective, JSON versionne, dispatch dry-run, exit strict lisible) |
 | Phase 3 | Intelligence depot lourd | ⏳ a venir |
 | Phase 4 | Qualite produit | ⏳ a venir |
 | Phase 5 | Vers autonomie plus elevee | ⏳ a venir |
@@ -163,7 +163,7 @@ suivant prend le relais automatiquement.
   loguees via `ContractTracker` + etat de gouvernance final (`OK` ou
   `BLOCKED_CONTRACT_VIOLATIONS`). `--strict-contracts` retourne exit code 2
   en cas de blocage. `--strict-correction-dispatch` retourne exit code 3
-  quand un dispatch correctif dry-run est disponible, sans retry automatique.
+  quand un dispatch correctif dry-run est disponible, avec résumé CLI, sans retry automatique.
   `--governance-json` ecrit un rapport machine-readable
   sous le projet. Les violations incluent une severite et une action corrective
   future (`action_hint`). Si un run est bloque, le CLI imprime aussi un plan
@@ -329,7 +329,7 @@ AGENTIQUE/
 │   ├── discover_models.py   # Inventaire modele NIM
 │   ├── test_phase0.py       # Validation statique Phase 0 (22/22)
 │   ├── test_resilience.py   # Tests unitaires resilience NIM §3/§3bis (31/31)
-│   ├── test_modes.py        # Tests unitaires modes d'usage Phase 1 §2 + gardes JSON/ledger/dispatch (67/67)
+│   ├── test_modes.py        # Tests unitaires modes d'usage Phase 1 §2 + gardes JSON/ledger/dispatch (70/70)
 │   ├── test_contracts.py    # Tests contrats + rapports gouvernance Phase 2 §A-§L (76/76)
 │   ├── test_tool_use.py     # Matrice tool use par modele NIM
 │   ├── tool_use_matrix.md   # Resultats de la matrice
@@ -354,7 +354,7 @@ AGENTIQUE/
   `--strict-contracts`. Un rapport JSON peut etre ecrit avec
   `--governance-json`; elles incluent `severity`, `action_hint`,
   `schema_version`, `correction_plan`, `corrective_interactions`,
-  `interaction_type`, `interaction_id`, `corrective_actions`, snapshot ledger versionne, manifeste dispatch dry-run, next ledger relisible et exit strict optionnel, mais ne
+  `interaction_type`, `interaction_id`, `corrective_actions`, snapshot ledger versionne, manifeste dispatch dry-run, next ledger relisible et exit strict optionnel avec résumé côté CLI, mais ne
   declenchent pas encore de retry automatique.
 - `planning=True` et `memory=True` CrewAI restent desactives sur NIM
   (incompat documentee).
