@@ -37,6 +37,9 @@ from crew.crew import (  # noqa: E402
     build_crew,
     VALID_MODES,
     DEFAULT_MODE,
+    AUTO_MODE,
+    _classify_mode,
+    _resolve_mode,
     CORRECTION_DISPATCH_AVAILABLE,
     CORRECTION_DISPATCH_AVAILABLE_EXIT_CODE,
     CORRECTION_DISPATCH_BLOCKED_BUDGET_EXHAUSTED,
@@ -93,9 +96,14 @@ def task_output(description: str, raw: str, tools: list[str] | None = None):
 
 # ─── Constantes publiques ────────────────────────────────────────────────────
 check(
-    "constantes : VALID_MODES contient read/edit/review/debug",
-    set(VALID_MODES) == {"read", "edit", "review", "debug"},
+    "constantes : VALID_MODES contient auto/read/edit/review/debug",
+    set(VALID_MODES) == {"auto", "read", "edit", "review", "debug"},
     f"val={VALID_MODES}",
+)
+check(
+    "constantes : AUTO_MODE == 'auto'",
+    AUTO_MODE == "auto",
+    f"val={AUTO_MODE!r}",
 )
 check(
     "constantes : DEFAULT_MODE == 'edit' (non-regression)",
@@ -421,6 +429,45 @@ except ValueError:
     check("correction next ledger : ecriture hors projet refusee", True)
 except Exception as e:
     check("correction next ledger : ecriture hors projet refusee", False, f"{type(e).__name__}: {e}")
+# ─── mode = "auto" classification locale ─────────────────────────────────────
+check(
+    "auto mode : explique -> read",
+    _classify_mode("Explique ce projet") == "read",
+)
+check(
+    "auto mode : relis -> review",
+    _classify_mode("Relis le code sans modifier") == "review",
+)
+check(
+    "auto mode : bug -> debug",
+    _classify_mode("Pourquoi ça plante au démarrage ?") == "debug",
+)
+check(
+    "auto mode : corrige bug -> debug",
+    _classify_mode("Corrige l'erreur de lancement") == "debug",
+)
+check(
+    "auto mode : ajoute -> edit",
+    _classify_mode("Ajoute une option CLI") == "edit",
+)
+check(
+    "auto mode : demande ambigue -> edit",
+    _classify_mode("avance") == DEFAULT_MODE,
+)
+check(
+    "auto mode : resolve explicite conserve review",
+    _resolve_mode("Ajoute une option", "review") == "review",
+)
+tracker = ContractTracker()
+crew_auto_read = build_crew("Explique ce projet", ROOT, deep=False,
+                            tracker=tracker, mode="auto")
+check(
+    "auto mode : build_crew read route 1 task",
+    len(crew_auto_read.tasks) == 1,
+    f"n={len(crew_auto_read.tasks)}",
+)
+
+
 # ─── mode = "read" ───────────────────────────────────────────────────────────
 tracker = ContractTracker()
 crew = build_crew("explique ce projet", ROOT, deep=False,
@@ -523,7 +570,7 @@ except Exception as e:
 
 
 # ─── --deep prepend scan_task quel que soit le mode ─────────────────────────
-for m, base_n in [("read", 1), ("review", 3), ("edit", 6), ("debug", 6)]:
+for m, base_n in [("auto", 6), ("read", 1), ("review", 3), ("edit", 6), ("debug", 6)]:
     crew = build_crew("x", ROOT, deep=True, mode=m)
     expected = base_n + 1
     check(

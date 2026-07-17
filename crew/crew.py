@@ -745,8 +745,10 @@ def make_scanner() -> Agent:
 # maître. Chaque mode route un sous-ensemble de tasks pour eviter la
 # sur-utilisation systematique du pipeline complet (dette §14 : "crew sequentiel
 # qui lance presque toujours toute la chaine"). L'utilisateur choisit
-# explicitement via --mode (classifier automatique reporte en slice B).
+# explicitement via --mode. Le mode auto reste deterministe et local : pas
+# d'appel LLM dedie, pas de changement du defaut historique edit.
 #
+#  - auto   : heuristique locale vers read / review / debug / edit.
 #  - read   : comprehension / audit sans modification (Researcher + final).
 #  - edit   : modification propre avec validation (pipeline complet, defaut).
 #  - review : relecture d'un etat existant, pas d'apres-Coder (Researcher +
@@ -1073,15 +1075,64 @@ CORRECTION_DISPATCH_AVAILABLE = "DISPATCH_AVAILABLE"
 CORRECTION_DISPATCH_BLOCKED_BUDGET_EXHAUSTED = "DISPATCH_BLOCKED_BUDGET_EXHAUSTED"
 CORRECTION_DISPATCH_NO_DISPATCH_NEEDED = "NO_DISPATCH_NEEDED"
 CORRECTION_DISPATCH_AVAILABLE_EXIT_CODE = 3
-VALID_MODES = ("read", "edit", "review", "debug")
+AUTO_MODE = "auto"
+ROUTING_MODES = ("read", "edit", "review", "debug")
+VALID_MODES = (AUTO_MODE, *ROUTING_MODES)
 DEFAULT_MODE = "edit"
+
+
+def _contains_any(text: str, needles: tuple[str, ...]) -> bool:
+    return any(needle in text for needle in needles)
+
+
+def _classify_mode(task_text: str) -> str:
+    """Classify a user task into a deterministic local execution mode."""
+    normalized = task_text.casefold()
+    no_write_markers = ("sans modifier", "ne modifie", "ne touche pas")
+    review_markers = (
+        "review", "relis", "relire", "revue", "relecture", "audit",
+        "verifie", "vérifie", "inspecte", "cherche les risques",
+    )
+    read_markers = (
+        "explique", "explique-moi", "resume", "résume", "decris", "décris",
+        "comprends", "comprendre", "cartographie", "lis ", "que fait",
+        "c'est quoi", "c est quoi", "etat general", "état général",
+    )
+    debug_markers = (
+        "debug", "bug", "erreur", "traceback", "crash", "corrige l'erreur",
+        "corrige erreur", "pourquoi ca plante", "pourquoi ça plante",
+        "investigue", "diagnostic", "diagnostique",
+    )
+    edit_markers = (
+        "corrige", "fix", "implemente", "implémente", "ajoute", "modifie",
+        "refactor", "refactore", "supprime", "remplace", "mets a jour",
+        "met à jour", "update", "change",
+    )
+    if _contains_any(normalized, no_write_markers):
+        return "review"
+    if _contains_any(normalized, edit_markers):
+        return "debug" if _contains_any(normalized, debug_markers) else "edit"
+    if _contains_any(normalized, debug_markers):
+        return "debug"
+    if _contains_any(normalized, review_markers):
+        return "review"
+    if _contains_any(normalized, read_markers):
+        return "read"
+    return DEFAULT_MODE
+
+
+def _resolve_mode(task_text: str, mode: str) -> str:
+    if mode not in VALID_MODES:
+        raise ValueError(f"mode invalide : {mode!r} (attendu : {VALID_MODES})")
+    if mode == AUTO_MODE:
+        return _classify_mode(task_text)
+    return mode
 
 
 def build_crew(task_text: str, project_path: Path, deep: bool,
                tracker: ContractTracker | None = None,
                mode: str = DEFAULT_MODE) -> Crew:
-    if mode not in VALID_MODES:
-        raise ValueError(f"mode invalide : {mode!r} (attendu : {VALID_MODES})")
+    mode = _resolve_mode(task_text, mode)
 
     # Le Researcher est commun a tous les modes.
     researcher = make_researcher()
@@ -1304,11 +1355,13 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Modes (--mode) :\n"
+            "  auto    Classification locale deterministe vers read/review/debug/edit\n"
             "  read    Compréhension / audit sans modification (Researcher seul)\n"
             "  edit    Modification propre avec validation (pipeline complet, défaut)\n"
             "  review  Relecture d'un état existant (Researcher + Critic + synthèse)\n"
             "  debug   Investigation + correction (alias edit pour l'instant)\n\n"
             "Exemples :\n"
+            '  python crew.py "explique ce projet" --project C:/mon-projet --mode auto\n'
             '  python crew.py "explique ce projet" --project C:/mon-projet --mode read\n'
             '  python crew.py "refactore l\'auth" --project C:/mon-projet --mode edit --write\n'
             '  python crew.py "relis mes derniers changements" --project C:/mon-projet --mode review\n'
@@ -1360,12 +1413,15 @@ def main():
         print("ERREUR : --correction-attempt-budget doit etre >= 0.")
         sys.exit(1)
 
+    effective_mode = _resolve_mode(args.task, args.mode)
+
     # Garde-fou : en mode read ou review, --write n'a aucun sens (pas de Coder
     # dans le pipeline). On avertit et on continue — l'argparse garde ne suffit
     # pas car write est aussi consomme par _resolve_project_rel / write_file_tool
     # pour la permission globale.
-    if args.mode in ("read", "review") and args.write:
-        print(f"ATTENTION : --write ignoré en mode {args.mode} (pas de Coder dans ce pipeline).")
+    if effective_mode in ("read", "review") and args.write:
+        mode_label = f"{args.mode} -> {effective_mode}" if args.mode == AUTO_MODE else args.mode
+        print(f"ATTENTION : --write ignoré en mode {mode_label} (pas de Coder dans ce pipeline).")
         args.write = False
 
     project_path = Path(args.project).resolve()
@@ -1407,8 +1463,11 @@ def main():
     print("╔════════════════════════════════════════════════════════════╗")
     print("║  NEXUS Crew v1 — Multi-agent avec accès fichiers réel     ║")
     print("╚════════════════════════════════════════════════════════════╝")
+    mode_display = effective_mode.upper()
+    if args.mode == AUTO_MODE:
+        mode_display = f"AUTO -> {mode_display}"
     print(f"  Projet  : {project_path}")
-    print(f"  Mode    : {args.mode.upper()}{' + DEEP (Scanner)' if args.deep else ''}")
+    print(f"  Mode    : {mode_display}{' + DEEP (Scanner)' if args.deep else ''}")
     print(f"  Tâche   : {args.task}")
     print()
     # Permissions actives — rendu explicite pour que l'utilisateur voie
@@ -1428,7 +1487,7 @@ def main():
 
     tracker = ContractTracker()
     crew = build_crew(args.task, project_path, deep=args.deep,
-                      tracker=tracker, mode=args.mode)
+                      tracker=tracker, mode=effective_mode)
     result = crew.kickoff()
 
     print()

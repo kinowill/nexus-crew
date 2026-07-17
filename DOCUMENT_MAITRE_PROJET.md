@@ -755,7 +755,7 @@ Autrement dit :
   - `build_crew` route les tasks par mode : `read` = 1 task (Researcher direct), `review` = 3 tasks (Researcher + review standalone + synthèse), `edit`/`debug` = pipeline complet 6 tasks (inchangé). `debug` est alias de `edit` côté composition, différenciation produit reportée Phase 2.
   - Garde-fou : `--write` silencieusement ignoré en mode `read` et `review`.
   - Validation : 31/31 `test_modes.py` + 22/22 `test_phase0.py` + 31/31 `test_resilience.py`.
-  - **Slice B différée** (classifier automatique de mode à partir de `task_text`) : nécessite un premier appel LLM dédié ou heuristique, scope Phase 2.
+  - **Slice B — Classifier automatique local de mode** : ✅ FAIT en Phase 2 §W (2026-07-17). `--mode auto` classe localement `task_text` vers `read`, `review`, `debug` ou `edit` sans appel LLM dédié. Le défaut reste `edit` pour non-régression.
 
 ### Phase 2 - Coopération multi-agent réelle
 
@@ -781,6 +781,7 @@ Autrement dit :
 - **§T — Résumé CLI du dispatch correctif strict** : ✅ FAIT (2026-07-17). Quand `--strict-correction-dispatch` est actif, le CLI imprime un résumé compact du statut dry-run, du nombre d'interactions dispatchables/bloquées et de l'exit code 3 éventuel avant de sortir. Aucun ledger n'est consommé et aucune relance automatique n'est exécutée.
 - **§U — Résumé CLI du manifeste dispatch JSON** : ✅ FAIT (2026-07-17). `--correction-dispatch-json` imprime maintenant le même résumé compact que le mode strict après écriture du manifeste. Le payload est calculé une seule fois puis réutilisé pour l'écriture et l'affichage, sans consommer de ledger et sans relance automatique.
 - **§V — IDs d'interactions dans le résumé dispatch** : ✅ FAIT (2026-07-17). Le résumé CLI du dispatch affiche maintenant les `interaction_id` dispatchables et bloqués, bornés à 5 IDs par ligne avec compteur résiduel. Cela rend la reprise plus directe sans ouvrir le JSON et sans changer le payload.
+- **§W — Mode auto local sans appel LLM dédié** : ✅ FAIT (2026-07-17). `--mode auto` résout la demande vers `read`, `review`, `debug` ou `edit` via heuristique locale déterministe. Le défaut CLI reste `edit`, et les modes explicites gardent priorité sur la classification.
 - autoriser les interactions inter-agents utiles ;
 - les typer proprement ;
 - borner les boucles ;
@@ -854,7 +855,7 @@ Pour le développeur :
 **Scripts de validation / diagnostic (offline, sans réseau)**
 - `scripts/test_phase0.py` — validation statique Phase 0 (22/22)
 - `scripts/test_resilience.py` — tests unitaires résilience NIM §3 + §3bis (31/31)
-- `scripts/test_modes.py` — tests unitaires modes d'usage Phase 1 §2 + gardes chemin JSON/ledger/dispatch, snapshot correctif, next ledger, statuts dispatch, résumés CLI avec IDs, exit strict et schémas (73/73)
+- `scripts/test_modes.py` — tests unitaires modes d'usage Phase 1 §2 + gardes chemin JSON/ledger/dispatch, snapshot correctif, next ledger, statuts dispatch, résumés CLI avec IDs, mode auto, exit strict et schémas (85/85)
 - `scripts/test_contracts.py` — tests contrats + rapports de gouvernance Phase 2 §A/§B/§C/§D/§E/§F/§G/§H/§I/§J/§K/§L (76/76)
 - `test_phase0.bat` — lanceur Windows pour `test_phase0.py`
 
@@ -877,6 +878,18 @@ Ce document maître doit être lu avant toute refonte importante du protocole ou
 > Trace des modifications apportées au projet, conformément au protocole
 > (distinction repo modifié / prod alignée / validation réelle).
 > Les entrées les plus récentes sont en haut.
+
+### 2026-07-17 — Phase 2 §W / Mode auto local sans appel LLM dédié
+
+- **Scope** : `crew/crew.py`, `scripts/test_modes.py`, `README.md`, `DOCUMENT_MAITRE_PROJET.md`.
+- **Motivation** : la Phase 1 §2 avait volontairement différé le classifier automatique de mode. Le routage explicite était stable; il manquait une option locale pour éviter le pipeline complet sur les demandes évidentes de lecture ou review.
+- **Changement appliqué** : ajout de `--mode auto`. Le classifieur local détermine `read`, `review`, `debug` ou `edit` depuis `task_text`, sans appel LLM dédié. Le défaut historique reste `edit`; les modes explicites gardent priorité. La bannière affiche `AUTO -> MODE` et `--write` est ignoré si `auto` résout vers `read` ou `review`.
+- **Tests ajoutés** : `scripts/test_modes.py` couvre les classifications `read`, `review`, `debug`, `edit`, le fallback ambigu vers `edit`, la priorité des modes explicites, `build_crew(..., mode="auto")` et `--deep + auto`.
+- **Validation offline** : `test_contracts.py` 76/76 OK, `test_modes.py` 85/85 OK, `test_resilience.py` 31/31 OK, `test_phase0.py` 22/22 OK, `crew.py --help` OK, `ruff check crew scripts` OK, `py_compile` OK, `git diff --check` OK.
+- **Repo modifié** : oui.
+- **Prod alignée** : N/A (outil local).
+- **Validation runtime NIM** : non nécessaire pour cette slice de routage déterministe/tests offline uniquement.
+- **Commit** : *(ce commit).*
 
 ### 2026-07-17 — Phase 2 §V / IDs d'interactions dans le résumé dispatch
 

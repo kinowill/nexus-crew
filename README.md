@@ -34,7 +34,7 @@ contraintes de securite.
 |---|---|---|
 | **Phase 0** | Hardening fondations (shell, permissions, install determ.) | ✅ CLOTUREE |
 | **Phase 1** | Refactor protocole + contrats de sortie | ✅ SOCLE STABILISE (§0 tool use NIM, §1 contrats, §2 modes CLI, §3 resilience NIM) |
-| **Phase 2** | Cooperation multi-agent reelle | 🔄 EN COURS (§A-§V ✅ gouvernance corrective, JSON versionne, dispatch dry-run tracable, exit strict) |
+| **Phase 2** | Cooperation multi-agent reelle | 🔄 EN COURS (§A-§W ✅ gouvernance corrective, mode auto, dispatch dry-run tracable) |
 | Phase 3 | Intelligence depot lourd | ⏳ a venir |
 | Phase 4 | Qualite produit | ⏳ a venir |
 | Phase 5 | Vers autonomie plus elevee | ⏳ a venir |
@@ -62,7 +62,7 @@ mechanique locale. Il ne faut pas le confondre avec la cible produit finale.
 
 ## Architecture Actuelle
 
-Le pipeline s'adapte au mode d'usage choisi via `--mode` (defaut : `edit`) :
+Le pipeline s'adapte au mode d'usage choisi via `--mode` (defaut : `edit`). `--mode auto` classe localement la demande vers `read`, `review`, `debug` ou `edit` sans appel LLM dedie :
 
 **Mode `edit` / `debug`** (pipeline complet, pour modifier du code) :
 
@@ -176,10 +176,9 @@ suivant prend le relais automatiquement.
   et etre propage dans les rapports JSON via les helpers de gouvernance.
   Le CLI peut charger ce ledger avec `--correction-ledger-json`, verifier `schema_version` quand il est present, ecrire un snapshot de reprise avec `--correction-ledger-out-json`, produire un manifeste dry-run de dispatch avec `--correction-dispatch-json` et son résumé CLI avec IDs, et ecrire directement le prochain ledger reutilisable avec `--correction-next-ledger-json`.
   Pas de retry auto pour l'instant.
-- **Modes d'usage CLI** (Phase 1 §2 slice A) : `--mode read/edit/review/debug`
+- **Modes d'usage CLI** (Phase 1 §2 + Phase 2 §W) : `--mode auto/read/edit/review/debug`
   adapte la composition du crew a la demande, evitant la sur-utilisation
-  systematique du pipeline complet. Classifier automatique de mode prevu
-  Phase 2.
+  systematique du pipeline complet. Classifier automatique local disponible via `--mode auto` (Phase 2 §W).
 - `planning=True` et `memory=True` desactives pour rester compatibles avec
   certaines limites NVIDIA NIM.
 
@@ -271,7 +270,7 @@ python crew/crew.py "ta tache" --project C:/chemin/projet [options]
 | Flag | Effet |
 |---|---|
 | `--project`, `-p` | Dossier de travail principal |
-| `--mode`, `-m` | Mode d'usage : `read` / `edit` / `review` / `debug` (defaut : `edit`) |
+| `--mode`, `-m` | Mode d'usage : `auto` / `read` / `edit` / `review` / `debug` (defaut : `edit`) |
 | `--write`, `-w` | Active l'ecriture reelle de fichiers (ignore en `read` / `review`) |
 | `--allow-shell`, `-s` | Donne au Coder l'outil shell (shell=False, allowlist stricte) |
 | `--deep`, `-d` | Ajoute le Scanner |
@@ -300,7 +299,7 @@ puis conserver le log dans un fichier local gitignore si le run doit etre analys
 
 ```bash
 # Comprendre / auditer sans modification (Researcher direct, pas de Coder)
-python crew/crew.py "explique ce projet" -p . --mode read
+python crew/crew.py "explique ce projet" -p . --mode auto
 
 # Modification avec validation (pipeline complet, defaut)
 python crew/crew.py "refactore l'auth en JWT" -p C:/mon-app --mode edit --write
@@ -329,7 +328,7 @@ AGENTIQUE/
 │   ├── discover_models.py   # Inventaire modele NIM
 │   ├── test_phase0.py       # Validation statique Phase 0 (22/22)
 │   ├── test_resilience.py   # Tests unitaires resilience NIM §3/§3bis (31/31)
-│   ├── test_modes.py        # Tests unitaires modes d'usage Phase 1 §2 + gardes JSON/ledger/dispatch (73/73)
+│   ├── test_modes.py        # Tests unitaires modes d'usage Phase 1 §2 + gardes JSON/ledger/dispatch + mode auto (85/85)
 │   ├── test_contracts.py    # Tests contrats + rapports gouvernance Phase 2 §A-§L (76/76)
 │   ├── test_tool_use.py     # Matrice tool use par modele NIM
 │   ├── tool_use_matrix.md   # Resultats de la matrice
@@ -362,8 +361,9 @@ AGENTIQUE/
   Researcher mesures en debug). Resume / troncature prevue Phase 2.
 - Les rate-limits NVIDIA NIM free tier (~40 req/min) restent un risque
   malgre le backoff automatique sur gros runs prolonges.
-- Mode `debug` est aujourd'hui un alias de `edit` cote composition. La
-  differentiation produit (orientation diagnostic) est prevue Phase 2.
+- Mode `debug` reste aujourd'hui un alias de `edit` cote composition. La
+  differentiation produit (orientation diagnostic) reste a affiner apres le
+  classifieur local `--mode auto`.
 
 ---
 
